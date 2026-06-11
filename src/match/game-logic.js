@@ -76,8 +76,12 @@ export function calcLinks(selected) {
 }
 
 // ── Attaque (GDD §5.2) ────────────────────────────────────
+// Note en attaque selon le SLOT : MIL → note_m, ATT → note_a
 export function calcAttack(selected, modifiers = {}) {
-  const base  = selected.reduce((s, p) => s + getNoteForRole(p, 'ATT'), 0)
+  const base  = selected.reduce((s, p) => {
+    const r = p._line || p.job
+    return s + Number(r==='MIL'?p.note_m : p.note_a)||0
+  }, 0)
   const links = calcLinks(selected)
   let total = base + links
   if (modifiers.doubleAttack) total *= 2
@@ -86,10 +90,15 @@ export function calcAttack(selected, modifiers = {}) {
 }
 
 // ── Défense (GDD §5.4) ────────────────────────────────────
-// GK → note_g, tout le reste → note_d
+// GK → note_g, MIL → note_m (les milieux gardent leur note MIL en défense aussi), DEF → note_d
 export function calcDefense(selected, modifiers = {}) {
   const base = selected.reduce((s, p) => {
-    return s + (p._line === 'GK' || p.job === 'GK' ? getNoteForRole(p,'GK') : getNoteForRole(p,'DEF'))
+    const r = p._line || p.job
+    let note = 0
+    if (r === 'GK') note = Number(p.note_g)||0
+    else if (r === 'MIL') note = Number(p.note_m)||0
+    else note = Number(p.note_d)||0
+    return s + note
   }, 0)
   const links = calcLinks(selected)
   let total = base + links

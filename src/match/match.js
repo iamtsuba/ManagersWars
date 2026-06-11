@@ -464,8 +464,9 @@ function renderGame(container, game, ctx) {
     <div class="match-phase">${phaseLabel}</div>
 
     <!-- Terrain -->
-    <div class="match-field" id="match-field">
+    <div class="match-field" id="match-field" style="position:relative">
       ${renderTeam(game.homeTeam, game.formation, game.phase, selectedIds)}
+      <svg id="match-vlinks-svg" style="position:absolute;inset:0;pointer-events:none;overflow:visible;width:100%;height:100%"></svg>
     </div>
 
     <!-- Barre d'outils : GC + Boost + Remplacements -->
@@ -533,6 +534,9 @@ function renderGame(container, game, ctx) {
 
   const log = document.getElementById('match-log')
   if (log) log.scrollTop = log.scrollHeight
+
+  // Liens verticaux en match (après render DOM)
+  requestAnimationFrame(() => drawMatchVerticalLinks(game.homeTeam, game.formation))
 }
 
 // ── ACTIONS ───────────────────────────────────────────────
