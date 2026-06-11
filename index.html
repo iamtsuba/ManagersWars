@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manager Wars</title>
+  <script type="module" crossorigin src="/manager-wars/assets/main-DA6Iv-BZ.js"></script>
+  <link rel="modulepreload" crossorigin href="/manager-wars/assets/card-CoW7FVRn.js">
+  <link rel="stylesheet" crossorigin href="/manager-wars/assets/card-BORugbJc.css">
+  <link rel="stylesheet" crossorigin href="/manager-wars/assets/main-CB8LfpAg.css">
+</head>
+<body>
+  <!-- Loader initial -->
+  <div id="app-loader" style="
+    position:fixed;inset:0;background:#134f2c;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:9999;gap:16px;color:#fff">
+    <div style="font-size:60px">⚽</div>
+    <div style="font-size:20px;font-weight:700">Manager Wars</div>
+    <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);
+      border-top-color:#D4A017;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+  </div>
+
+  <!-- App container -->
+  <div id="app" style="display:none"></div>
+
+  <!-- Toast global -->
+  <div id="toast"></div>
+
+  <!-- Modal global -->
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title"></h2>
+        <button class="btn-icon" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes spin { to { transform: rotate(360deg) } }
+  </style>
+
+</body>
+</html>
