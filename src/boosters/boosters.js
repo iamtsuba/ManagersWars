@@ -20,7 +20,7 @@ function getPortrait(p) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   if (!supabaseUrl || !p?.skin || !p?.hair) return null
   const key = p.hair === 'chauve' ? `${p.skin}-chauve-rase` : `${p.skin}-${p.hair}-${p.hair_length}`
-  return `${supabaseUrl}/storage/v1/object/public/assets/tetes/${key}.jpg`
+  return `${supabaseUrl}/storage/v1/object/public/assets/tetes/${key}.png`
 }
 
 const JOB_COLORS = { GK:'#111', DEF:'#bb2020', MIL:'#D4A017', ATT:'#1A6B3C' }
@@ -327,11 +327,11 @@ function buildCardFace(card) {
         <div style="font-size:13px;font-weight:900;color:#111;line-height:1.1;font-family:Arial Black,Arial">${(p.surname_encoded||'').toUpperCase()}</div>
       </div>
       <!-- Étoile + bande poste -->
-      <div style="position:relative;height:58px;background:#f2e8d2;display:flex;flex-direction:column;align-items:center;justify-content:center">
-        <div style="position:absolute;width:100%;height:12px;background:${jobColor}"></div>
-        <svg width="44" height="42" viewBox="0 0 52 50" style="position:relative;z-index:1">
-          <polygon points="26,3 31.5,18 48,18 35,29 39.5,46 26,36 12.5,46 17,29 4,18 20.5,18" fill="${jobColor}" stroke="#0004" stroke-width="2"/>
-          <text x="26" y="32" text-anchor="middle" font-size="15" font-weight="900" fill="white" font-family="Arial Black,Arial">${note||0}</text>
+      <div style="position:relative;height:72px;background:#f2e8d2;display:flex;flex-direction:column;align-items:center">
+        <div style="position:absolute;top:14px;width:100%;height:26px;background:${jobColor}"></div>
+        <svg width="50" height="48" viewBox="0 0 54 52" style="position:absolute;top:4px;z-index:2;display:block">
+          <polygon points="27,3 33,18 50,18 37,29 41,47 27,37 13,47 17,29 4,18 21,18" fill="${jobColor}" stroke="white" stroke-width="2.5"/>
+          <text x="27" y="33" text-anchor="middle" font-size="16" font-weight="900" fill="white" font-family="Arial Black,Arial">${note||0}</text>
         </svg>
       </div>
       <!-- Portrait -->
