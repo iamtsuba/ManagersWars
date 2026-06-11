@@ -224,94 +224,81 @@ function renderDeckField(container, builder, positions, ctx) {
   const lineGroups  = LINES_ORDER.map(role => positions.filter(p => p.startsWith(role)))
   const struct      = FORMATIONS[builder.formation] || FORMATIONS['4-4-2']
 
-  // ── Colonne logique d'un slot dans sa ligne ────────────
-  // Ex : MIL2 sur 5 milieux → getCols(5)[1] = 1
-  function getLogicalCol(pos) {
-    const role = pos.replace(/\d+/, '')
-    const num  = parseInt(pos.replace(/\D/g, '')) - 1  // 0-based
-    return getColsForLine(struct[role] || 1)[num] ?? 1
-  }
   function getColsForLine(n) {
-    if (n === 1) return [1]
-    if (n === 2) return [0, 2]
-    if (n === 3) return [0, 1, 2]
-    if (n === 4) return [0, 1, 1, 2]
-    if (n === 5) return [0, 1, 1, 1, 2]
+    if (n===1) return [1]
+    if (n===2) return [0,2]
+    if (n===3) return [0,1,2]
+    if (n===4) return [0,1,1,2]
+    if (n===5) return [0,1,1,1,2]
     return [1]
   }
 
-  // ── Données joueur d'un slot ───────────────────────────
   function slotPlayer(pos) {
     const id = builder.slots[pos]
     if (!id) return null
-    const card = builder.playerCards.find(c => c.id === id)
-    return card?.player || null
+    return builder.playerCards.find(c => c.id === id)?.player || null
   }
 
-  // ── Couleur d'un lien entre deux joueurs ──────────────
+  // Couleurs corrigées : vert flashy, noir → rouge
   function linkColor(pA, pB) {
-    if (!pA || !pB) return '#333'
+    if (!pA || !pB) return '#cc2222'        // rouge si aucun lien
     const sc = pA.country_code && pB.country_code && pA.country_code === pB.country_code
     const sk = pA.club_id && pB.club_id && pA.club_id === pB.club_id
-    if (sc && sk) return '#1A6B3C'
-    if (sc || sk)  return '#D4A017'
-    return '#333'
+    if (sc && sk) return '#00e676'           // vert flashy : pays + club
+    if (sc || sk)  return '#D4A017'          // jaune : pays OU club
+    return '#cc2222'                         // rouge : aucun lien
   }
 
-  // ── Note au poste ──────────────────────────────────────
   function noteAt(p, role) {
     if (!p) return 0
     return Number(role==='GK'?p.note_g : role==='DEF'?p.note_d : role==='MIL'?p.note_m : p.note_a)||0
   }
 
-  // ── Stats ligne ────────────────────────────────────────
-  function lineStats(line) {
-    const role = line[0]?.replace(/\d+/,'') || 'ATT'
-    let total = 0, linkBonus = 0
-    line.forEach(pos => { total += noteAt(slotPlayer(pos), role) })
-    for (let i = 0; i < line.length - 1; i++) {
-      const c = linkColor(slotPlayer(line[i]), slotPlayer(line[i+1]))
-      if (c !== '#333') linkBonus++
-    }
-    return { total, linkBonus }
+  // Calcul stats MIL (note totale + bonus liens) pour badge en haut à droite
+  const milLine = lineGroups.find(lg => lg[0]?.startsWith('MIL')) || []
+  let milTotal = 0, milLinks = 0
+  milLine.forEach(pos => { milTotal += noteAt(slotPlayer(pos), 'MIL') })
+  for (let i = 0; i < milLine.length - 1; i++) {
+    const c = linkColor(slotPlayer(milLine[i]), slotPlayer(milLine[i+1]))
+    if (c !== '#cc2222') milLinks++
   }
 
-  // ── Rendu ──────────────────────────────────────────────
-  // Chaque slot : 64px de large. Lien H : 14px. Lien V : rendu après.
-  const SLOT_W = 60, SLOT_H = 60, LINK_W = 14, SLOT_MARGIN = 6
+  const SLOT_W = 60, SLOT_H = 60, LINK_W = 12
 
-  field.innerHTML = `<div id="deck-terrain" style="position:relative;display:inline-block;width:100%">
-    <div id="deck-rows" style="display:flex;flex-direction:column;gap:0;align-items:center;padding:8px 0"></div>
-    <svg id="deck-links-svg" style="position:absolute;inset:0;pointer-events:none;overflow:visible" width="100%" height="100%"></svg>
-  </div>`
+  field.innerHTML = `
+    <div id="deck-terrain" style="position:relative;display:inline-block;width:100%">
+      ${milLine.length > 0 ? `
+        <div style="position:absolute;top:6px;right:8px;z-index:10;
+          background:rgba(212,160,23,0.9);color:#000;border-radius:8px;
+          padding:3px 8px;font-size:11px;font-weight:900;pointer-events:none">
+          MIL ${milTotal}${milLinks>0?` +${milLinks}`:''} ⚡
+        </div>` : ''}
+      <div id="deck-rows" style="display:flex;flex-direction:column;gap:0;align-items:center;padding:28px 0 8px"></div>
+      <svg id="deck-links-svg" style="position:absolute;inset:0;pointer-events:none;overflow:visible" width="100%" height="100%"></svg>
+    </div>`
 
   const rowsEl = document.getElementById('deck-rows')
 
-  // Rendu des lignes + recueil des positions DOM
+  // ── Lignes de joueurs (sans note de ligne sauf MIL) ────
   lineGroups.forEach((line, li) => {
     const role = line[0]?.replace(/\d+/,'') || 'ATT'
-    const { total, linkBonus } = lineStats(line)
     const rowEl = document.createElement('div')
     rowEl.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:0;position:relative'
     rowEl.dataset.lineIdx = li
 
     line.forEach((pos, idx) => {
-      const p     = slotPlayer(pos)
-      const color = JOB_COLORS[role]
-      const note  = p ? noteAt(p, role) : null
+      const p       = slotPlayer(pos)
+      const color   = JOB_COLORS[role]
+      const note    = p ? noteAt(p, role) : null
       const portrait = p ? getPortrait(p) : null
 
       const slotEl = document.createElement('div')
       slotEl.className = p ? 'formation-slot filled' : 'formation-slot'
-      slotEl.dataset.pos = pos
-      slotEl.dataset.lineIdx = li
-      slotEl.dataset.slotIdx = idx
-      slotEl.style.cssText = `
-        border-color:${p?color:'rgba(255,255,255,0.4)'};
-        background:${p?color:'transparent'};
-        cursor:pointer;position:relative;
-        width:${SLOT_W}px;height:${SLOT_H}px;flex-shrink:0;
-      `
+      slotEl.dataset.pos      = pos
+      slotEl.dataset.lineIdx  = li
+      slotEl.dataset.slotIdx  = idx
+      slotEl.style.cssText = `border-color:${p?color:'rgba(255,255,255,0.4)'};background:${p?color:'transparent'};cursor:pointer;position:relative;width:${SLOT_W}px;height:${SLOT_H}px;flex-shrink:0;`
+
       if (p && portrait) {
         const img = document.createElement('img')
         img.src = portrait
@@ -321,45 +308,35 @@ function renderDeckField(container, builder, positions, ctx) {
       if (p) {
         slotEl.innerHTML += `
           <div style="position:relative;z-index:1;font-size:16px;font-weight:900;color:#fff;text-shadow:0 1px 3px #0008;line-height:1">${note}</div>
-          <div style="position:relative;z-index:1;font-size:7px;color:#fff;text-shadow:0 1px 2px #0008;max-width:54px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${p.surname_encoded}</div>
-        `
+          <div style="position:relative;z-index:1;font-size:7px;color:#fff;text-shadow:0 1px 2px #0008;max-width:54px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${p.surname_encoded}</div>`
       } else {
         slotEl.innerHTML = `
           <div style="font-size:9px;color:rgba(255,255,255,0.7)">${role}</div>
-          <div style="font-size:18px;color:rgba(255,255,255,0.5)">+</div>
-        `
+          <div style="font-size:18px;color:rgba(255,255,255,0.5)">+</div>`
       }
       rowEl.appendChild(slotEl)
 
-      // Lien horizontal entre slots adjacents
+      // Lien horizontal
       if (idx < line.length - 1) {
-        const pNext = slotPlayer(line[idx+1])
-        const lc = linkColor(p, pNext)
+        const lc = linkColor(p, slotPlayer(line[idx+1]))
         const linkEl = document.createElement('div')
-        linkEl.style.cssText = `
-          width:${LINK_W}px;height:4px;border-radius:2px;
-          background:${lc};flex-shrink:0;
-          box-shadow:0 0 4px ${lc === '#333' ? 'none' : lc};
-          opacity:${lc==='#333'?'0.4':'0.95'};
-        `
+        linkEl.style.cssText = `width:${LINK_W}px;height:4px;border-radius:2px;background:${lc};flex-shrink:0;box-shadow:0 0 5px ${lc};opacity:0.9;`
         rowEl.appendChild(linkEl)
       }
     })
 
     rowsEl.appendChild(rowEl)
-
-    // Note de ligne
-    const statsEl = document.createElement('div')
-    statsEl.style.cssText = 'text-align:center;color:rgba(255,255,255,0.7);font-size:10px;margin:2px 0 6px'
-    statsEl.innerHTML = `<span style="font-weight:700;color:#fff">${total}</span>
-      ${linkBonus > 0 ? `<span style="color:#D4A017">(+${linkBonus} lien${linkBonus>1?'s':''})</span>` : ''}`
-    rowsEl.appendChild(statsEl)
+    // Spacer (pas de stats texte par ligne)
+    const sp = document.createElement('div')
+    sp.style.cssText = 'height:8px'
+    rowsEl.appendChild(sp)
   })
 
-  // ── Liens verticaux via SVG après render DOM ──────────
-  // On attend que le DOM soit rendu puis on trace les liens V
+  // ── Liens verticaux SVG ────────────────────────────────
+  // Logique étendue : on cherche les adjacences de COLONNE entre lignes.
+  // Une colonne logique d'une ligne peut être adjacente (±1) à une colonne de la ligne suivante.
   requestAnimationFrame(() => {
-    const svg = document.getElementById('deck-links-svg')
+    const svg     = document.getElementById('deck-links-svg')
     const terrain = document.getElementById('deck-terrain')
     if (!svg || !terrain) return
 
@@ -371,47 +348,54 @@ function renderDeckField(container, builder, positions, ctx) {
       const lineB = lineGroups[li + 1]
       const roleA = lineA[0]?.replace(/\d+/,'') || 'ATT'
       const roleB = lineB[0]?.replace(/\d+/,'') || 'DEF'
-
-      // Colonnes logiques de chaque ligne
       const colsA = getColsForLine(struct[roleA]||1)
       const colsB = getColsForLine(struct[roleB]||1)
 
-      // Pour chaque colonne logique partagée entre les deux lignes
-      for (let logCol = 0; logCol <= 2; logCol++) {
-        const idxA = colsA.indexOf(logCol)
-        const idxB = colsB.indexOf(logCol)
-        if (idxA === -1 || idxB === -1) continue
+      // Pour chaque paire (slotA, slotB) : lier si colonnes logiques adjacentes (|diff|<=1)
+      // ET pas déjà liées (éviter doublons)
+      const drawn = new Set()
 
-        const posA = lineA[idxA]
-        const posB = lineB[idxB]
-        if (!posA || !posB) continue
+      for (let ia = 0; ia < lineA.length; ia++) {
+        for (let ib = 0; ib < lineB.length; ib++) {
+          const colA = colsA[ia]
+          const colB = colsB[ib]
+          if (Math.abs(colA - colB) > 1) continue    // pas adjacents
 
-        const pA = slotPlayer(posA)
-        const pB = slotPlayer(posB)
-        const lc = linkColor(pA, pB)
+          const key = `${ia}-${ib}`
+          if (drawn.has(key)) continue
+          drawn.add(key)
 
-        // Trouver les éléments DOM
-        const elA = field.querySelector(`[data-pos="${posA}"]`)
-        const elB = field.querySelector(`[data-pos="${posB}"]`)
-        if (!elA || !elB) continue
+          const posA = lineA[ia]
+          const posB = lineB[ib]
+          const pA   = slotPlayer(posA)
+          const pB   = slotPlayer(posB)
+          const lc   = linkColor(pA, pB)
 
-        const rA = elA.getBoundingClientRect()
-        const rB = elB.getBoundingClientRect()
-        const off = terrainRect
+          const elA = field.querySelector(`[data-pos="${posA}"]`)
+          const elB = field.querySelector(`[data-pos="${posB}"]`)
+          if (!elA || !elB) continue
 
-        const x1 = rA.left - off.left + rA.width / 2
-        const y1 = rA.top  - off.top  + rA.height
-        const x2 = rB.left - off.left + rB.width / 2
-        const y2 = rB.top  - off.top
+          const rA  = elA.getBoundingClientRect()
+          const rB  = elB.getBoundingClientRect()
+          const off = terrainRect
 
-        const line = document.createElementNS('http://www.w3.org/2000/svg','line')
-        line.setAttribute('x1', x1); line.setAttribute('y1', y1)
-        line.setAttribute('x2', x2); line.setAttribute('y2', y2)
-        line.setAttribute('stroke', lc)
-        line.setAttribute('stroke-width', '4')
-        line.setAttribute('stroke-linecap', 'round')
-        line.setAttribute('opacity', lc === '#333' ? '0.35' : '0.9')
-        svg.appendChild(line)
+          const x1 = rA.left - off.left + rA.width  / 2
+          const y1 = rA.top  - off.top  + rA.height
+          const x2 = rB.left - off.left + rB.width  / 2
+          const y2 = rB.top  - off.top
+
+          const svgLine = document.createElementNS('http://www.w3.org/2000/svg','line')
+          svgLine.setAttribute('x1', x1); svgLine.setAttribute('y1', y1)
+          svgLine.setAttribute('x2', x2); svgLine.setAttribute('y2', y2)
+          svgLine.setAttribute('stroke', lc)
+          svgLine.setAttribute('stroke-width', '3')
+          svgLine.setAttribute('stroke-linecap', 'round')
+          svgLine.setAttribute('opacity', lc === '#cc2222' ? '0.35' : '0.85')
+          if (lc !== '#cc2222') {
+            svgLine.setAttribute('filter', `drop-shadow(0 0 3px ${lc})`)
+          }
+          svg.appendChild(svgLine)
+        }
       }
     }
   })
@@ -420,6 +404,7 @@ function renderDeckField(container, builder, positions, ctx) {
     el.addEventListener('click', () => openPlayerSelector(el.dataset.pos, builder, container, ctx))
   })
 }
+
 
 // ── Sélecteur de joueur (Petit 2 + 3) ────────────────────
 function openPlayerSelector(position, builder, container, ctx) {
