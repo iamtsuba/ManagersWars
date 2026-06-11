@@ -78,7 +78,7 @@ async function openBooster(booster, { state, toast, container }) {
     const { data } = await supabase.from('users').select('*').eq('id', state.profile.id).single()
     if (data) state.profile = data
 
-    showRevealScreen(newCards, booster)
+    showRevealScreen(newCards, booster, navigate)
 
   } catch (err) {
     toast(err.message, 'error')
@@ -140,7 +140,7 @@ async function openFormationBooster(profile, cost) {
   return created
 }
 
-function showRevealScreen(cards, booster) {
+function showRevealScreen(cards, booster, navigate) {
   const overlay = document.createElement('div')
   overlay.className = 'booster-reveal'
   overlay.innerHTML = `
@@ -190,7 +190,7 @@ function showRevealScreen(cards, booster) {
   document.body.appendChild(overlay)
   document.getElementById('reveal-close').addEventListener('click', () => {
     overlay.remove()
-    window._render()
+    navigate('collection')
   })
 }
 
