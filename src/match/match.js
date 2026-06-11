@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase.js'
 import {
-  GC_DEFS, getNoteForRole, getDisplayNote, calcAttack, calcDefense,
+  GC_DEFS, getNoteForRole, getColsForCount, calcAttack, calcDefense,
   calcMidfieldDuel, resolveDuel, aiSelectPlayers, getRewards
 } from './game-logic.js'
 
@@ -120,15 +120,20 @@ function assignToGrid(players, formation) {
   const lines  = { GK:[], DEF:[], MIL:[], ATT:[] }
   const pool   = [...players]
   for (const role of ['GK','DEF','MIL','ATT']) {
+    const linePlayers = []
     for (let i = 0; i < struct[role]; i++) {
       let idx = pool.findIndex(p => p.job === role)
       if (idx === -1) idx = pool.findIndex(p => p.job2 === role)
       if (idx === -1) idx = 0
       if (pool[idx]) {
-        lines[role].push({ ...pool[idx], _line: role })
+        linePlayers.push({ ...pool[idx], _line: role })
         pool.splice(idx, 1)
       }
     }
+    // Assigner les colonnes de grille
+    const cols = getColsForCount(linePlayers.length)
+    linePlayers.forEach((p, i) => { p._col = cols[i] })
+    lines[role] = linePlayers
   }
   return lines
 }
