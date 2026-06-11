@@ -13,7 +13,7 @@ export function encodeVowels(str) {
 export function getPortraitUrl(skin, hair, hairLength) {
   if (!skin || !hair || !hairLength || !supabaseUrl) return null
   const key = hair === 'chauve' ? `${skin}-chauve-rase` : `${skin}-${hair}-${hairLength}`
-  return `${supabaseUrl}/storage/v1/object/public/assets/tetes/${key}.jpg`
+  return `${supabaseUrl}/storage/v1/object/public/assets/tetes/${key}.png`
 }
 
 export function getClubLogoUrl(logoPath) {
