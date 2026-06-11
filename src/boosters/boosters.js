@@ -39,7 +39,13 @@ export async function renderBoosters(container, { state, navigate, toast }) {
       <div class="booster-grid">
         ${BOOSTERS.map(b => {
           const canAfford = credits >= b.cost || b.cost === 0
-          return `<div class="booster-card ${!canAfford ? 'disabled' : ''}" data-booster="${b.id}">
+          const isPlayerBooster = b.id === 'players_std' || b.id === 'players_pub'
+          return `<div class="booster-card ${!canAfford ? 'disabled' : ''}" data-booster="${b.id}" style="position:relative">
+            ${isPlayerBooster ? `<button class="booster-info-btn" data-info="${b.id}"
+              style="position:absolute;top:6px;right:6px;width:20px;height:20px;border-radius:50%;
+              background:rgba(0,0,0,0.15);border:none;cursor:pointer;font-size:11px;font-weight:700;
+              color:var(--gray-600);display:flex;align-items:center;justify-content:center;z-index:2"
+              onclick="event.stopPropagation()">ℹ</button>` : ''}
             <div class="icon">${b.icon}</div>
             <div class="name">${b.name}</div>
             <div class="desc">${b.sub}</div>
@@ -70,6 +76,14 @@ export async function renderBoosters(container, { state, navigate, toast }) {
       }
     })
   })
+
+  // Icône ℹ probabilités sur les boosters Players
+  container.querySelectorAll('.booster-info-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation()
+      showBoosterOdds()
+    })
+  })
 }
 
 async function openBooster(booster, { state, toast, navigate, container }) {
@@ -97,6 +111,45 @@ async function openBooster(booster, { state, toast, navigate, container }) {
   showBoosterAnimation(newCards, booster, navigate)
 }
 
+// ── Probabilités d'obtention (GDD boosters) ──────────────
+// 90% Normal note 1-5 | 8% Normal note 6-10 | 1.5% Pépite/Papyte | 0.5% Légende
+function rollRarity() {
+  const r = Math.random() * 100
+  if (r < 0.5)  return 'legende'
+  if (r < 2.0)  return 'special'      // pépite ou papyte
+  if (r < 10.0) return 'normal_high'  // normal note 6-10
+  return 'normal_low'                  // normal note 1-5
+}
+
+function maxNote(p) {
+  return Math.max(Number(p.note_g)||0, Number(p.note_d)||0, Number(p.note_m)||0, Number(p.note_a)||0)
+}
+
+function pickPlayer(pool, targetRarity) {
+  let candidates
+  switch(targetRarity) {
+    case 'legende':
+      candidates = pool.filter(p => p.rarity === 'legende')
+      if (!candidates.length) candidates = pool.filter(p => p.rarity === 'pepite' || p.rarity === 'papyte')
+      if (!candidates.length) candidates = pool.filter(p => maxNote(p) >= 6)
+      break
+    case 'special':
+      candidates = pool.filter(p => p.rarity === 'pepite' || p.rarity === 'papyte')
+      if (!candidates.length) candidates = pool.filter(p => maxNote(p) >= 6)
+      break
+    case 'normal_high':
+      candidates = pool.filter(p => p.rarity === 'normal' && maxNote(p) >= 6)
+      if (!candidates.length) candidates = pool.filter(p => maxNote(p) >= 6)
+      break
+    default: // normal_low
+      candidates = pool.filter(p => p.rarity === 'normal' && maxNote(p) >= 1 && maxNote(p) <= 5)
+      if (!candidates.length) candidates = pool.filter(p => p.rarity === 'normal')
+      break
+  }
+  if (!candidates.length) candidates = pool
+  return candidates[Math.floor(Math.random() * candidates.length)]
+}
+
 async function openPlayersBooster(profile, count, cost) {
   if (cost > 0) {
     const { error } = await supabase.from('users')
@@ -111,16 +164,21 @@ async function openPlayersBooster(profile, count, cost) {
 
   if (!players?.length) throw new Error('Pas de joueurs en BDD — ajoutes-en via le panel admin !')
 
-  const gks = players.filter(p => p.job === 'GK')
+  const gks    = players.filter(p => p.job === 'GK')
   const nonGks = players.filter(p => p.job !== 'GK')
-  let selected = []
+  const needGK = !profile.first_booster_opened && gks.length > 0
+  const selected = []
 
-  if (!profile.first_booster_opened && gks.length > 0) {
-    selected.push(gks[Math.floor(Math.random() * gks.length)])
-    selected.push(...shuffle([...nonGks]).slice(0, count - 1))
+  for (let i = 0; i < count; i++) {
+    // 1ère carte du 1er booster = GK obligatoire
+    const pool = (i === 0 && needGK) ? gks : (i === 0 ? nonGks : players)
+    const rarity = rollRarity()
+    const player = pickPlayer(pool, rarity)
+    if (player) selected.push(player)
+  }
+
+  if (needGK) {
     await supabase.from('users').update({ first_booster_opened: true }).eq('id', profile.id)
-  } else {
-    selected = shuffle([...players]).slice(0, count)
   }
 
   const { data: created } = await supabase.from('cards')
@@ -160,155 +218,252 @@ async function openFormationBooster(profile, cost) {
 function showBoosterAnimation(cards, booster, navigate) {
   const overlay = document.createElement('div')
   overlay.id = 'booster-anim-overlay'
+
   overlay.innerHTML = `
     <style>
       #booster-anim-overlay {
-        position:fixed;inset:0;background:#0a1628;display:flex;flex-direction:column;
-        align-items:center;justify-content:center;z-index:3000;overflow:hidden;
+        position:fixed;inset:0;background:#0a1628;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        z-index:3000;overflow:hidden;
       }
-      .pack-container { display:flex;flex-direction:column;align-items:center;gap:16px; }
       .pack-visual {
         width:160px;height:220px;border-radius:16px;
         background:linear-gradient(135deg,#1A6B3C,#D4A017,#1A6B3C);
         display:flex;flex-direction:column;align-items:center;justify-content:center;
-        box-shadow:0 0 40px rgba(212,160,23,0.5);
-        cursor:pointer;transition:transform 0.1s;font-size:64px;
-        border:3px solid rgba(212,160,23,0.6);
-        animation: packFloat 2s ease-in-out infinite;
+        box-shadow:0 0 40px rgba(212,160,23,0.5);cursor:pointer;font-size:64px;
+        border:3px solid rgba(212,160,23,0.6);animation:packFloat 2s ease-in-out infinite;
       }
       @keyframes packFloat {
         0%,100% { transform:translateY(0) rotate(-1deg); }
         50%      { transform:translateY(-8px) rotate(1deg); }
       }
-      .pack-visual.shaking {
-        animation: packShake 0.4s ease-in-out;
-      }
+      .pack-visual.shaking { animation:packShake 0.4s ease-in-out; }
       @keyframes packShake {
-        0%,100% { transform:rotate(0deg); }
-        20%     { transform:rotate(-8deg) scale(1.05); }
-        40%     { transform:rotate(8deg) scale(1.08); }
-        60%     { transform:rotate(-5deg) scale(1.06); }
-        80%     { transform:rotate(5deg) scale(1.04); }
+        0%,100%{transform:rotate(0)} 20%{transform:rotate(-8deg) scale(1.05)}
+        40%{transform:rotate(8deg) scale(1.08)} 60%{transform:rotate(-5deg)}
+        80%{transform:rotate(5deg)}
       }
-      .pack-open {
-        animation: packOpen 0.6s ease-out forwards !important;
-      }
+      .pack-open { animation:packOpen 0.6s ease-out forwards !important; }
       @keyframes packOpen {
-        0%   { transform:scale(1); opacity:1; }
-        50%  { transform:scale(1.3) rotate(5deg); opacity:0.8; }
-        100% { transform:scale(0) rotate(20deg); opacity:0; }
+        0%{transform:scale(1);opacity:1} 50%{transform:scale(1.3) rotate(5deg);opacity:.8}
+        100%{transform:scale(0) rotate(20deg);opacity:0}
       }
-      .cards-reveal {
-        display:none;flex-wrap:wrap;gap:10px;justify-content:center;
-        max-width:600px;padding:16px;
+      /* Carte révélation - une seule carte centrée */
+      .single-card-reveal {
+        animation:cardReveal 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
       }
-      .card-flip-wrapper {
-        perspective:600px;
-        cursor:pointer;
+      @keyframes cardReveal {
+        from{opacity:0;transform:scale(0.5) rotateY(90deg)}
+        to{opacity:1;transform:scale(1) rotateY(0deg)}
       }
-      .card-flip-inner {
-        width:140px;height:200px;position:relative;
-        transform-style:preserve-3d;
-        transition:transform 0.6s ease;
-        transform:rotateY(180deg);
+      .legend-glow {
+        box-shadow:0 0 30px 10px #7a28b8, 0 0 60px 20px rgba(122,40,184,0.5) !important;
+        animation:legendPulse 0.8s ease-in-out infinite alternate;
       }
-      .card-flip-inner.revealed { transform:rotateY(0deg); }
-      .card-face-back, .card-face-front {
-        position:absolute;inset:0;backface-visibility:hidden;border-radius:12px;
-        display:flex;align-items:center;justify-content:center;
+      @keyframes legendPulse {
+        from{box-shadow:0 0 20px 5px #7a28b8}
+        to{box-shadow:0 0 50px 20px #7a28b8,0 0 80px 30px rgba(122,40,184,0.4)}
       }
-      .card-face-back {
-        background:linear-gradient(135deg,#1A6B3C,#0a3d1e);
-        border:3px solid rgba(212,160,23,0.6);
-        font-size:40px;
+      /* Récapitulatif final */
+      .recap-grid {
+        display:flex;flex-wrap:wrap;gap:8px;justify-content:center;
+        max-width:600px;padding:16px;overflow-y:auto;max-height:70vh;
       }
-      .card-face-front {
-        backface-visibility:hidden;transform:rotateY(0deg);
-        overflow:hidden;
-      }
+      .recap-card { animation:recapAppear 0.3s ease both; }
+      @keyframes recapAppear { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
     </style>
 
     <!-- Phase 1 : booster -->
-    <div class="pack-container" id="pack-phase">
-      <div style="font-size:14px;color:rgba(255,255,255,0.7);margin-bottom:8px">
+    <div id="pack-phase" style="display:flex;flex-direction:column;align-items:center;gap:16px">
+      <div style="font-size:14px;color:rgba(255,255,255,0.7)">
         ${booster.name} · ${cards.length} carte${cards.length>1?'s':''}
       </div>
       <div class="pack-visual" id="pack-visual">${booster.icon}</div>
-      <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:8px">Appuie pour ouvrir</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.5)">Appuie pour ouvrir</div>
     </div>
 
-    <!-- Phase 2 : cartes -->
-    <div class="cards-reveal" id="cards-phase"></div>
-
-    <!-- Boutons fin -->
-    <div id="reveal-btns" style="display:none;margin-top:20px;gap:10px;flex-direction:column;align-items:center">
-      <button class="btn btn-primary" id="reveal-collection" style="min-width:200px">
-        Voir ma collection
-      </button>
-      <button class="btn btn-ghost" id="reveal-more" style="color:#fff;border-color:rgba(255,255,255,0.3);min-width:200px">
-        Retour aux boosters
-      </button>
+    <!-- Phase 2 : révélation une par une -->
+    <div id="reveal-phase" style="display:none;flex-direction:column;align-items:center;gap:16px;width:100%;padding:0 20px">
+      <div id="card-counter" style="font-size:13px;color:rgba(255,255,255,0.5)"></div>
+      <div id="single-card-slot" style="position:relative"></div>
+      <div id="card-tap-hint" style="font-size:13px;color:rgba(255,255,255,0.4);margin-top:4px">Appuie pour continuer →</div>
     </div>
+
+    <!-- Phase 3 : récapitulatif -->
+    <div id="recap-phase" style="display:none;flex-direction:column;align-items:center;gap:0;width:100%">
+      <div style="font-size:14px;color:rgba(255,255,255,0.7);margin:12px 0 4px">
+        ${cards.length} carte${cards.length>1?'s obtenues':'obtenue'} !
+      </div>
+      <div class="recap-grid" id="recap-grid"></div>
+      <div style="display:flex;gap:10px;padding:0 16px 20px;width:100%;max-width:400px">
+        <button class="btn btn-primary" id="reveal-collection" style="flex:1">Voir ma collection</button>
+        <button class="btn btn-ghost" id="reveal-more" style="flex:1;color:#fff;border-color:rgba(255,255,255,0.3)">Boosters</button>
+      </div>
+    </div>
+
+    <!-- Canvas pour feu d'artifice -->
+    <canvas id="fireworks-canvas" style="position:fixed;inset:0;pointer-events:none;z-index:3001"></canvas>
   `
+
   document.body.appendChild(overlay)
 
-  // Click sur le booster → shake puis ouvrir
-  let clicked = false
-  const packEl = document.getElementById('pack-visual')
-  packEl.addEventListener('click', () => {
-    if (clicked) return
-    clicked = true
-
-    // Shake
+  // ── Phase 1 : ouverture du booster ───────────────────
+  let packClicked = false
+  document.getElementById('pack-visual').addEventListener('click', () => {
+    if (packClicked) return
+    packClicked = true
+    const packEl = document.getElementById('pack-visual')
     packEl.classList.add('shaking')
     setTimeout(() => {
-      packEl.classList.remove('shaking')
       packEl.classList.add('pack-open')
-
       setTimeout(() => {
         document.getElementById('pack-phase').style.display = 'none'
-        const cardsPhase = document.getElementById('cards-phase')
-        cardsPhase.style.display = 'flex'
-
-        // Générer les dos de cartes
-        cardsPhase.innerHTML = cards.map((card, i) => `
-          <div class="card-flip-wrapper" data-card-idx="${i}">
-            <div class="card-flip-inner" id="card-flip-${i}">
-              <div class="card-face-back">⚽</div>
-              <div class="card-face-front">${buildCardFace(card)}</div>
-            </div>
-          </div>`).join('')
-
-        // Révéler les cartes une par une automatiquement
-        cards.forEach((_, i) => {
-          setTimeout(() => {
-            document.getElementById(`card-flip-${i}`)?.classList.add('revealed')
-          }, i * 350 + 300)
-        })
-
-        // Afficher les boutons après toutes les révélations
-        setTimeout(() => {
-          document.getElementById('reveal-btns').style.display = 'flex'
-        }, cards.length * 350 + 800)
-
-        // Click sur une carte pour la retourner manuellement
-        cardsPhase.querySelectorAll('.card-flip-wrapper').forEach(el => {
-          el.addEventListener('click', () => {
-            document.getElementById(`card-flip-${el.dataset.cardIdx}`)?.classList.add('revealed')
-          })
-        })
-
+        startCardReveal(0)
       }, 600)
     }, 500)
   })
 
-  document.getElementById('reveal-collection')?.addEventListener('click', () => {
-    overlay.remove(); navigate('collection')
+  // ── Phase 2 : révélation carte par carte ─────────────
+  let currentIdx = 0
+
+  function startCardReveal(idx) {
+    currentIdx = idx
+    const revealPhase = document.getElementById('reveal-phase')
+    revealPhase.style.display = 'flex'
+    showCard(idx)
+  }
+
+  function showCard(idx) {
+    const card    = cards[idx]
+    const counter = document.getElementById('card-counter')
+    const slot    = document.getElementById('single-card-slot')
+    const hint    = document.getElementById('card-tap-hint')
+
+    if (counter) counter.textContent = `Carte ${idx+1} / ${cards.length}`
+    if (hint) hint.textContent = idx < cards.length-1 ? 'Appuie pour continuer →' : 'Appuie pour voir toutes tes cartes'
+
+    // Construire la carte
+    const cardHtml = buildCardFace(card)
+    const isLegend = card.card_type === 'player' && card.player?.rarity === 'legende'
+
+    // Wrapper cliquable
+    slot.innerHTML = `
+      <div id="current-card-wrap" class="single-card-reveal" style="cursor:pointer;${isLegend?'filter:drop-shadow(0 0 20px #7a28b8)':''}">
+        ${cardHtml}
+      </div>`
+
+    if (isLegend) {
+      // Lancer le feu d'artifice
+      launchFireworks()
+    }
+
+    // Clic pour passer à la suivante
+    const wrap = document.getElementById('current-card-wrap')
+    let tapped = false
+    wrap.addEventListener('click', () => {
+      if (tapped) return
+      tapped = true
+      const next = idx + 1
+      if (next < cards.length) {
+        // Sortie + entrée de la carte suivante
+        wrap.style.transition = 'all 0.25s ease'
+        wrap.style.transform = 'translateX(-120%) rotate(-15deg)'
+        wrap.style.opacity = '0'
+        setTimeout(() => showCard(next), 250)
+      } else {
+        // Toutes les cartes vues → récapitulatif
+        showRecap()
+      }
+    })
+  }
+
+  // ── Phase 3 : récapitulatif ────────────────────────────
+  function showRecap() {
+    stopFireworks()
+    document.getElementById('reveal-phase').style.display = 'none'
+    const recapPhase = document.getElementById('recap-phase')
+    recapPhase.style.display = 'flex'
+
+    const grid = document.getElementById('recap-grid')
+    grid.innerHTML = cards.map((card, i) => `
+      <div class="recap-card" style="--i:${i};animation-delay:${i*0.07}s">
+        ${buildCardFace(card)}
+      </div>`).join('')
+  }
+
+  // ── Feu d'artifice ────────────────────────────────────
+  let fwInterval = null
+
+  function launchFireworks() {
+    const canvas = document.getElementById('fireworks-canvas')
+    if (!canvas) return
+    canvas.width  = window.innerWidth
+    canvas.height = window.innerHeight
+    const ctx = canvas.getContext('2d')
+    const particles = []
+
+    function spawnBurst() {
+      const x = Math.random() * canvas.width
+      const y = Math.random() * canvas.height * 0.6
+      const colors = ['#7a28b8','#ff4081','#D4A017','#00e676','#fff','#e040fb','#40c4ff']
+      const color  = colors[Math.floor(Math.random() * colors.length)]
+      for (let i = 0; i < 60; i++) {
+        const angle = (Math.PI * 2 / 60) * i
+        const speed = 2 + Math.random() * 5
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          alpha: 1,
+          color,
+          size: 2 + Math.random() * 3,
+        })
+      }
+    }
+
+    spawnBurst()
+    fwInterval = setInterval(spawnBurst, 600)
+
+    function animate() {
+      if (!document.getElementById('fireworks-canvas')) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i]
+        p.x  += p.vx
+        p.y  += p.vy + 0.08   // gravité légère
+        p.vy *= 0.98
+        p.alpha -= 0.018
+        if (p.alpha <= 0) { particles.splice(i, 1); continue }
+        ctx.globalAlpha = p.alpha
+        ctx.fillStyle   = p.color
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+      if (fwInterval !== null || particles.length > 0) requestAnimationFrame(animate)
+    }
+    animate()
+  }
+
+  function stopFireworks() {
+    if (fwInterval !== null) { clearInterval(fwInterval); fwInterval = null }
+    const canvas = document.getElementById('fireworks-canvas')
+    if (canvas) {
+      const ctx = canvas.getContext('2d')
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+  }
+
+  // ── Boutons fin ───────────────────────────────────────
+  document.getElementById('reveal-collection').addEventListener('click', () => {
+    stopFireworks(); overlay.remove(); navigate('collection')
   })
-  document.getElementById('reveal-more')?.addEventListener('click', () => {
-    overlay.remove(); navigate('boosters')
+  document.getElementById('reveal-more').addEventListener('click', () => {
+    stopFireworks(); overlay.remove(); navigate('boosters')
   })
 }
+
 
 function buildCardFace(card) {
   if (card.card_type === 'player' && card.player) {
@@ -369,6 +524,80 @@ function buildCardFace(card) {
     </div>`
   }
   return '<div style="width:140px;height:200px;background:#333;border-radius:12px"></div>'
+}
+
+// ── Popup probabilités d'obtention ───────────────────────
+function showBoosterOdds() {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;
+    align-items:center;justify-content:center;z-index:4000;padding:16px`
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:340px;width:100%;
+      box-shadow:0 8px 40px rgba(0,0,0,0.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:16px;font-weight:700;margin:0">📦 Chances d'obtention</h3>
+        <button id="odds-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#666">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          padding:10px 14px;border-radius:10px;background:#f5f5f5">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:14px;height:14px;border-radius:50%;background:#ccc;flex-shrink:0"></div>
+            <div>
+              <div style="font-weight:600;font-size:13px">Normal (note 1–5)</div>
+              <div style="font-size:11px;color:#888">Carte commune</div>
+            </div>
+          </div>
+          <div style="font-size:18px;font-weight:900;color:#333">90%</div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          padding:10px 14px;border-radius:10px;background:#f0f8ff">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:14px;height:14px;border-radius:50%;background:#4a90d9;flex-shrink:0"></div>
+            <div>
+              <div style="font-weight:600;font-size:13px">Normal (note 6–10)</div>
+              <div style="font-size:11px;color:#888">Carte commune haute</div>
+            </div>
+          </div>
+          <div style="font-size:18px;font-weight:900;color:#4a90d9">8%</div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          padding:10px 14px;border-radius:10px;background:#fff8e1">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:14px;height:14px;border-radius:50%;background:#D4A017;flex-shrink:0"></div>
+            <div>
+              <div style="font-weight:600;font-size:13px">Pépite / Papyte</div>
+              <div style="font-size:11px;color:#888">Carte rare</div>
+            </div>
+          </div>
+          <div style="font-size:18px;font-weight:900;color:#D4A017">1.5%</div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          padding:10px 14px;border-radius:10px;background:#f5eeff">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:14px;height:14px;border-radius:50%;background:#7a28b8;flex-shrink:0"></div>
+            <div>
+              <div style="font-weight:600;font-size:13px">Légende</div>
+              <div style="font-size:11px;color:#888">Carte ultra-rare</div>
+            </div>
+          </div>
+          <div style="font-size:18px;font-weight:900;color:#7a28b8">0.5%</div>
+        </div>
+
+      </div>
+      <div style="margin-top:14px;padding:10px;background:#f9f9f9;border-radius:8px;font-size:11px;color:#888;text-align:center">
+        Les probabilités s'appliquent à chaque carte individuellement.<br>
+        Le 1er booster contient toujours un Gardien.
+      </div>
+    </div>
+  `
+  document.body.appendChild(overlay)
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove() })
+  document.getElementById('odds-close').addEventListener('click', () => overlay.remove())
 }
 
 function showAdSimulation() {
