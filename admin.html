@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manager Wars — Panel Admin</title>
+  <style>
+    body { display: flex; flex-direction: column; }
+    #auth-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; background: var(--green-dark);
+    }
+    .auth-box {
+      background: #fff; border-radius: var(--radius-lg);
+      padding: 2rem; width: 100%; max-width: 360px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    }
+    .auth-box h1 { font-size: 22px; margin-bottom: 4px; }
+    .auth-box p { color: var(--gray-600); font-size: 13px; margin-bottom: 1.5rem; }
+    .form-group { margin-bottom: 1rem; }
+    .admin-layout { display: none; }
+  </style>
+  <script type="module" crossorigin src="/manager-wars/assets/admin-DxW7eG0r.js"></script>
+  <link rel="modulepreload" crossorigin href="/manager-wars/assets/card-DV4SB6WS.js">
+  <link rel="stylesheet" crossorigin href="/manager-wars/assets/card-BORugbJc.css">
+</head>
+<body>
+
+<!-- ── Écran de connexion ── -->
+<div id="auth-screen">
+  <div class="auth-box">
+    <h1>⚽ Manager Wars</h1>
+    <p>Panneau d'administration</p>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="auth-email" placeholder="admin@example.com">
+    </div>
+    <div class="form-group">
+      <label>Mot de passe</label>
+      <input type="password" id="auth-password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" style="width:100%" id="auth-btn">Se connecter</button>
+    <div id="auth-error" style="color:#c0392b;font-size:12px;margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- ── Layout Admin ── -->
+<div class="admin-layout" id="admin-app">
+  <aside class="admin-sidebar">
+    <div class="logo">⚽ Manager Wars</div>
+    <nav>
+      <a href="#" data-page="dashboard" class="active">📊 Dashboard</a>
+      <a href="#" data-page="players">🃏 Joueurs / Cartes</a>
+      <a href="#" data-page="clubs">🏟️ Clubs</a>
+      <a href="#" data-page="card-builder">🎨 Card Builder</a>
+      <a href="#" data-page="users">👥 Managers</a>
+      <a href="#" data-page="market">🛒 Marché</a>
+      <a href="#" data-page="import-export">📊 Import/Export CSV</a>
+    </nav>
+    <div class="logout">
+      <button class="btn btn-ghost btn-sm" id="logout-btn" style="width:100%">Déconnexion</button>
+    </div>
+  </aside>
+
+  <div class="admin-main">
+    <div class="admin-topbar">
+      <h1 id="page-title">Dashboard</h1>
+      <div id="admin-user" style="font-size:13px;color:var(--gray-600)"></div>
+    </div>
+    <div class="admin-content" id="page-content"></div>
+  </div>
+</div>
+
+<!-- ── Modal générique ── -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Titre</h2>
+      <button class="btn btn-ghost btn-sm" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script src="/manager-wars/config.js"></script>
+</body>
+</html>
