@@ -311,6 +311,18 @@ function openFormationModal(formation, openModal) {
   const LINES = ['ATT','MIL','DEF','GK']
 
   // Pour N joueurs, retourner les indices de colonne (0=G, 1=C, 2=D)
+  // Positions X par ligne : retourne un tableau de X pour N joueurs, centré dans W
+  // 2 joueurs → côte à côte au centre, pas aux extrêmes
+  function getXPositions(n, W) {
+    const R = 20    // rayon cercle
+    const GAP = 14  // espace mini entre cercles
+    const STEP = R * 2 + GAP  // 54px entre centres
+    const totalWidth = (n - 1) * STEP
+    const startX = (W - totalWidth) / 2
+    return Array.from({ length: n }, (_, i) => startX + i * STEP)
+  }
+
+  // Colonnes logiques (0=G, 1=C, 2=D) pour les liens verticaux
   function getCols(n) {
     if (n === 1) return [1]
     if (n === 2) return [0, 2]
@@ -320,91 +332,91 @@ function openFormationModal(formation, openModal) {
     return [1]
   }
 
-  // Construire la grille [ligne][col] = role | null
-  // On garde le premier joueur par (ligne, col) comme représentant
-  const grid = {} // key = "ligne-col" → role
-  const lineSlots = {} // ligne → [{role, col, slotIdx}]
-
-  LINES.forEach(role => {
-    const n = struct[role]
-    const cols = getCols(n)
-    lineSlots[role] = cols.map((col, i) => ({ role, col, slotIdx: i }))
-    cols.forEach((col, i) => {
-      const key = role + '-' + col
-      if (!grid[key]) grid[key] = role // premier occupant
-    })
-  })
-
-  // Pour chaque case de la grille 4 lignes × 3 cols, déterminer si occupée
-  // et calculer les liens (H entre col adjacentes / V entre lignes adjacentes)
-
   function renderGrid() {
-    // Rendu SVG de la grille
-    const W = 280, ROW_H = 70, COL_W = 80, MARGIN_X = 30, MARGIN_Y = 20
+    const W = 290, ROW_H = 72, MARGIN_Y = 24
     const H = LINES.length * ROW_H + MARGIN_Y * 2
-    const colX = [MARGIN_X, MARGIN_X + COL_W, MARGIN_X + COL_W * 2] // G, C, D
     const rowY = LINES.map((_, i) => MARGIN_Y + i * ROW_H + ROW_H / 2)
+
+    // Calculer les positions X réelles de chaque joueur par ligne
+    const lineXs = {}
+    LINES.forEach(role => {
+      lineXs[role] = getXPositions(struct[role], W)
+    })
+
+    // Pour les liens verticaux : mapper colonne logique → X réelle
+    // On prend les positions de chaque colonne (0=premier, 1=milieu, 2=dernier)
+    // et on cherche si la colonne logique existe dans les deux lignes adjacentes
+    function getColX(role, logicalCol) {
+      const n = struct[role]
+      const cols = getCols(n)
+      const xs = lineXs[role]
+      // Trouver le premier joueur ayant cette colonne logique
+      const idx = cols.indexOf(logicalCol)
+      return idx >= 0 ? xs[idx] : null
+    }
 
     let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`
 
-    // Dessiner les liens HORIZONTAUX (même ligne, cols adjacentes)
+    // ── Liens HORIZONTAUX (joueurs adjacents sur la même ligne) ──
     LINES.forEach((role, li) => {
-      const n = struct[role]
-      const cols = getCols(n)
-      const uniqueCols = [...new Set(cols)].sort()
-      for (let ci = 0; ci < uniqueCols.length - 1; ci++) {
-        const c1 = uniqueCols[ci], c2 = uniqueCols[ci+1]
-        if (c2 - c1 === 1) { // adjacents
-          svg += `<line x1="${colX[c1]+18}" y1="${rowY[li]}" x2="${colX[c2]-18}" y2="${rowY[li]}"
-            stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-dasharray="4,3"/>`
-          // Flèche bidirectionnelle
-          svg += `<text x="${(colX[c1]+colX[c2])/2}" y="${rowY[li]-4}" text-anchor="middle"
-            font-size="9" fill="rgba(255,255,255,0.5)">↔</text>`
-        }
+      const xs = lineXs[role]
+      for (let i = 0; i < xs.length - 1; i++) {
+        const x1 = xs[i] + 20, x2 = xs[i+1] - 20
+        const y  = rowY[li]
+        svg += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"
+          stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="4,3"/>`
+        svg += `<text x="${(x1+x2)/2}" y="${y-6}" text-anchor="middle"
+          font-size="8" fill="rgba(255,255,255,0.45)">↔</text>`
       }
     })
 
-    // Dessiner les liens VERTICAUX (même col, lignes adjacentes)
-    for (let col = 0; col < 3; col++) {
+    // ── Liens VERTICAUX (même colonne logique, lignes adjacentes) ──
+    for (let logCol = 0; logCol < 3; logCol++) {
       for (let li = 0; li < LINES.length - 1; li++) {
         const role1 = LINES[li], role2 = LINES[li+1]
-        const cols1 = [...new Set(getCols(struct[role1]))]
-        const cols2 = [...new Set(getCols(struct[role2]))]
-        if (cols1.includes(col) && cols2.includes(col)) {
-          svg += `<line x1="${colX[col]}" y1="${rowY[li]+18}" x2="${colX[col]}" y2="${rowY[li+1]-18}"
-            stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-dasharray="4,3"/>`
-          svg += `<text x="${colX[col]+6}" y="${(rowY[li]+rowY[li+1])/2+3}" font-size="9"
-            fill="rgba(255,255,255,0.5)">↕</text>`
+        const x1 = getColX(role1, logCol)
+        const x2 = getColX(role2, logCol)
+        if (x1 !== null && x2 !== null) {
+          // Lien vertical centré entre les deux X (peuvent différer si ligne a plus/moins de joueurs)
+          const mx = (x1 + x2) / 2
+          svg += `<line x1="${x1}" y1="${rowY[li]+20}" x2="${x2}" y2="${rowY[li+1]-20}"
+            stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="4,3"/>`
+          svg += `<text x="${mx+6}" y="${(rowY[li]+rowY[li+1])/2+3}"
+            font-size="8" fill="rgba(255,255,255,0.45)">↕</text>`
         }
       }
     }
 
-    // Dessiner les cercles de joueurs
+    // ── Cercles de joueurs ──
     LINES.forEach((role, li) => {
-      const n = struct[role]
-      const cols = getCols(n)
+      const n     = struct[role]
+      const xs    = lineXs[role]
+      const cols  = getCols(n)
       const color = JC[role]
-      // Compter combien dans chaque col
-      const colCount = {}
-      cols.forEach(c => { colCount[c] = (colCount[c]||0)+1 })
+      const cy    = rowY[li]
 
-      Object.entries(colCount).forEach(([colStr, cnt]) => {
-        const col = parseInt(colStr)
-        const cx = colX[col]
-        const cy = rowY[li]
-        // Cercle principal
-        svg += `<circle cx="${cx}" cy="${cy}" r="18" fill="${color}" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>`
-        svg += `<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="9" font-weight="900"
-          fill="white" font-family="Arial Black,Arial">${role}</text>`
-        // Numéro en dessous
+      // Regrouper les joueurs par colonne logique pour afficher ×N si besoin
+      const colGroups = {}
+      cols.forEach((logCol, i) => {
+        if (!colGroups[logCol]) colGroups[logCol] = { xs: [], indices: [] }
+        colGroups[logCol].xs.push(xs[i])
+        colGroups[logCol].indices.push(i)
+      })
+
+      Object.entries(colGroups).forEach(([logCol, group]) => {
+        const cnt = group.xs.length
         if (cnt > 1) {
-          svg += `<text x="${cx}" y="${cy+10}" text-anchor="middle" font-size="7"
-            fill="rgba(255,255,255,0.7)">×${cnt}</text>`
+          // Plusieurs joueurs dans la même colonne logique → afficher au centre avec ×N
+          const cx = group.xs.reduce((a,b)=>a+b,0) / cnt
+          svg += `<circle cx="${cx}" cy="${cy}" r="20" fill="${color}" stroke="rgba(255,255,255,0.6)" stroke-width="2"/>`
+          svg += `<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="9" font-weight="900" fill="white" font-family="Arial Black,Arial">${role}</text>`
+          svg += `<text x="${cx}" y="${cy+9}" text-anchor="middle" font-size="8" font-weight="700" fill="rgba(255,255,255,0.85)">×${cnt}</text>`
         } else {
-          const slotNum = cols.filter(c => c === col).indexOf(col) + 1
-          const label = role + (cols.indexOf(col)+1)
-          svg += `<text x="${cx}" y="${cy+28}" text-anchor="middle" font-size="7"
-            fill="rgba(255,255,255,0.45)">${role}${cols.indexOf(col)+1}</text>`
+          const cx = group.xs[0]
+          const slotNum = group.indices[0] + 1
+          svg += `<circle cx="${cx}" cy="${cy}" r="20" fill="${color}" stroke="rgba(255,255,255,0.6)" stroke-width="2"/>`
+          svg += `<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="9" font-weight="900" fill="white" font-family="Arial Black,Arial">${role}</text>`
+          svg += `<text x="${cx}" y="${cy+30}" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.4)">${role}${slotNum}</text>`
         }
       })
     })
