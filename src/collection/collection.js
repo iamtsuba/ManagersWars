@@ -23,7 +23,7 @@ function getPortrait(p) {
   const url = import.meta.env.VITE_SUPABASE_URL
   if (!url || !p?.skin || !p?.hair) return null
   const key = p.hair === 'chauve' ? `${p.skin}-chauve-rase` : `${p.skin}-${p.hair}-${p.hair_length}`
-  return `${url}/storage/v1/object/public/assets/tetes/${key}.jpg`
+  return `${url}/storage/v1/object/public/assets/tetes/${key}.png`
 }
 
 function getNote(p, job) {
@@ -57,20 +57,22 @@ function renderCard(card, countBadge = '') {
         <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:#666">${p.firstname}</div>
         <div style="font-size:14px;font-weight:900;color:#111;font-family:Arial Black,Arial;line-height:1.1">${(p.surname_encoded||'').toUpperCase()}</div>
       </div>
-      <!-- Étoiles + bande poste -->
-      <div style="position:relative;height:70px;background:#f2e8d2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0">
-        <div style="position:absolute;width:100%;height:13px;background:${jobColor}"></div>
-        <!-- Étoile principale (z-index élevé pour être au premier plan) -->
-        <svg width="52" height="50" viewBox="0 0 52 50" style="position:relative;z-index:2;display:block">
-          <polygon points="26,3 31.5,18 48,18 35,29 39.5,46 26,36 12.5,46 17,29 4,18 20.5,18"
-            fill="${jobColor}" stroke="#0005" stroke-width="2"/>
-          <text x="26" y="32" text-anchor="middle" font-size="16" font-weight="900"
+      <!-- Zone étoiles : bandeau fixe + étoile principale dedans + petite étoile dessous -->
+      <div style="position:relative;height:80px;background:#f2e8d2;display:flex;flex-direction:column;align-items:center">
+        <!-- Bandeau de couleur fixe (toujours au même endroit) -->
+        <div style="position:absolute;top:16px;width:100%;height:28px;background:${jobColor}"></div>
+        <!-- Étoile principale centrée sur le bandeau, contour blanc -->
+        <svg width="54" height="52" viewBox="0 0 54 52" style="position:absolute;top:4px;z-index:2;display:block">
+          <polygon points="27,3 33,18 50,18 37,29 41,47 27,37 13,47 17,29 4,18 21,18"
+            fill="${jobColor}" stroke="white" stroke-width="2.5"/>
+          <text x="27" y="33" text-anchor="middle" font-size="16" font-weight="900"
             fill="white" font-family="Arial Black,Arial">${note1}</text>
         </svg>
+        <!-- Petite étoile poste secondaire, toujours en dessous du bandeau -->
         ${note2 !== null ? `
-        <svg width="32" height="31" viewBox="0 0 32 31" style="position:relative;z-index:2;display:block;margin-top:-4px">
+        <svg width="32" height="31" viewBox="0 0 32 31" style="position:absolute;top:50px;z-index:2;display:block">
           <polygon points="16,2 19.5,11 30,11 22,17.5 25,27 16,21.5 7,27 10,17.5 2,11 12.5,11"
-            fill="${job2Color}" stroke="#0004" stroke-width="1.5"/>
+            fill="${job2Color}" stroke="white" stroke-width="1.5"/>
           <text x="16" y="20" text-anchor="middle" font-size="9" font-weight="900"
             fill="white" font-family="Arial Black,Arial">${note2}</text>
         </svg>` : ''}
@@ -304,66 +306,122 @@ function openFormationModal(formation, openModal) {
     '3-5-2': { GK:1, DEF:3, MIL:5, ATT:2 },
     '5-3-2': { GK:1, DEF:5, MIL:3, ATT:2 },
   }
-  const JOB_C = { GK:'#111', DEF:'#bb2020', MIL:'#D4A017', ATT:'#1A6B3C' }
+  const JC = { GK:'#111', DEF:'#bb2020', MIL:'#D4A017', ATT:'#1A6B3C' }
   const struct = STRUCTS[formation] || STRUCTS['4-4-2']
+  const LINES = ['ATT','MIL','DEF','GK']
 
-  function renderLine(role, count) {
-    const color = JOB_C[role]
-    const circles = []
-    for (let i = 0; i < count; i++) {
-      circles.push(`
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-          <div style="width:36px;height:36px;border-radius:50%;background:${color};color:#fff;
-            display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;
-            border:2px solid rgba(255,255,255,0.4)">
-            ${role}
-          </div>
-          ${count > 1 && i < count-1 ? `<div style="position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:rgba(255,255,255,0.4);font-size:10px">↔</div>` : ''}
-        </div>`)
-    }
+  // Pour N joueurs, retourner les indices de colonne (0=G, 1=C, 2=D)
+  function getCols(n) {
+    if (n === 1) return [1]
+    if (n === 2) return [0, 2]
+    if (n === 3) return [0, 1, 2]
+    if (n === 4) return [0, 1, 1, 2]
+    if (n === 5) return [0, 1, 1, 1, 2]
+    return [1]
+  }
 
-    // Liens horizontaux entre joueurs adjacents
-    const slots = Array.from({length:count}, (_,i) => i)
-    const links = slots.slice(0,-1).map(() =>
-      `<div style="flex:1;height:2px;background:rgba(255,255,255,0.2);border-radius:1px;margin-top:17px"></div>`
-    )
+  // Construire la grille [ligne][col] = role | null
+  // On garde le premier joueur par (ligne, col) comme représentant
+  const grid = {} // key = "ligne-col" → role
+  const lineSlots = {} // ligne → [{role, col, slotIdx}]
 
-    const row = []
-    slots.forEach((_, i) => {
-      row.push(`<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-        <div style="width:36px;height:36px;border-radius:50%;background:${color};color:#fff;
-          display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;
-          box-shadow:0 0 8px rgba(0,0,0,0.3)">
-          ${role}
-        </div>
-        <div style="font-size:8px;color:rgba(255,255,255,0.5)">${role}${i+1}</div>
-      </div>`)
-      if (i < count-1) {
-        row.push(`<div style="display:flex;align-items:center;padding-bottom:14px">
-          <div style="width:20px;height:2px;background:rgba(255,255,255,0.3)"></div>
-          <div style="font-size:8px;color:rgba(255,255,255,0.4);white-space:nowrap;padding:0 2px">lien</div>
-          <div style="width:20px;height:2px;background:rgba(255,255,255,0.3)"></div>
-        </div>`)
+  LINES.forEach(role => {
+    const n = struct[role]
+    const cols = getCols(n)
+    lineSlots[role] = cols.map((col, i) => ({ role, col, slotIdx: i }))
+    cols.forEach((col, i) => {
+      const key = role + '-' + col
+      if (!grid[key]) grid[key] = role // premier occupant
+    })
+  })
+
+  // Pour chaque case de la grille 4 lignes × 3 cols, déterminer si occupée
+  // et calculer les liens (H entre col adjacentes / V entre lignes adjacentes)
+
+  function renderGrid() {
+    // Rendu SVG de la grille
+    const W = 280, ROW_H = 70, COL_W = 80, MARGIN_X = 30, MARGIN_Y = 20
+    const H = LINES.length * ROW_H + MARGIN_Y * 2
+    const colX = [MARGIN_X, MARGIN_X + COL_W, MARGIN_X + COL_W * 2] // G, C, D
+    const rowY = LINES.map((_, i) => MARGIN_Y + i * ROW_H + ROW_H / 2)
+
+    let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`
+
+    // Dessiner les liens HORIZONTAUX (même ligne, cols adjacentes)
+    LINES.forEach((role, li) => {
+      const n = struct[role]
+      const cols = getCols(n)
+      const uniqueCols = [...new Set(cols)].sort()
+      for (let ci = 0; ci < uniqueCols.length - 1; ci++) {
+        const c1 = uniqueCols[ci], c2 = uniqueCols[ci+1]
+        if (c2 - c1 === 1) { // adjacents
+          svg += `<line x1="${colX[c1]+18}" y1="${rowY[li]}" x2="${colX[c2]-18}" y2="${rowY[li]}"
+            stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-dasharray="4,3"/>`
+          // Flèche bidirectionnelle
+          svg += `<text x="${(colX[c1]+colX[c2])/2}" y="${rowY[li]-4}" text-anchor="middle"
+            font-size="9" fill="rgba(255,255,255,0.5)">↔</text>`
+        }
       }
     })
 
-    return `<div style="display:flex;align-items:flex-start;justify-content:center;gap:0;margin-bottom:12px">
-      ${row.join('')}
-    </div>`
+    // Dessiner les liens VERTICAUX (même col, lignes adjacentes)
+    for (let col = 0; col < 3; col++) {
+      for (let li = 0; li < LINES.length - 1; li++) {
+        const role1 = LINES[li], role2 = LINES[li+1]
+        const cols1 = [...new Set(getCols(struct[role1]))]
+        const cols2 = [...new Set(getCols(struct[role2]))]
+        if (cols1.includes(col) && cols2.includes(col)) {
+          svg += `<line x1="${colX[col]}" y1="${rowY[li]+18}" x2="${colX[col]}" y2="${rowY[li+1]-18}"
+            stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-dasharray="4,3"/>`
+          svg += `<text x="${colX[col]+6}" y="${(rowY[li]+rowY[li+1])/2+3}" font-size="9"
+            fill="rgba(255,255,255,0.5)">↕</text>`
+        }
+      }
+    }
+
+    // Dessiner les cercles de joueurs
+    LINES.forEach((role, li) => {
+      const n = struct[role]
+      const cols = getCols(n)
+      const color = JC[role]
+      // Compter combien dans chaque col
+      const colCount = {}
+      cols.forEach(c => { colCount[c] = (colCount[c]||0)+1 })
+
+      Object.entries(colCount).forEach(([colStr, cnt]) => {
+        const col = parseInt(colStr)
+        const cx = colX[col]
+        const cy = rowY[li]
+        // Cercle principal
+        svg += `<circle cx="${cx}" cy="${cy}" r="18" fill="${color}" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/>`
+        svg += `<text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="9" font-weight="900"
+          fill="white" font-family="Arial Black,Arial">${role}</text>`
+        // Numéro en dessous
+        if (cnt > 1) {
+          svg += `<text x="${cx}" y="${cy+10}" text-anchor="middle" font-size="7"
+            fill="rgba(255,255,255,0.7)">×${cnt}</text>`
+        } else {
+          const slotNum = cols.filter(c => c === col).indexOf(col) + 1
+          const label = role + (cols.indexOf(col)+1)
+          svg += `<text x="${cx}" y="${cy+28}" text-anchor="middle" font-size="7"
+            fill="rgba(255,255,255,0.45)">${role}${cols.indexOf(col)+1}</text>`
+        }
+      })
+    })
+
+    svg += '</svg>'
+    return svg
   }
 
   openModal(`Formation ${formation}`,
-    `<div style="background:linear-gradient(180deg,#1a6b3c,#0a3d1e);border-radius:12px;padding:20px;margin-bottom:16px">
-      <div style="text-align:center;color:rgba(255,255,255,0.6);font-size:11px;margin-bottom:16px;letter-spacing:1px">SCHÉMA DES POSTES ET LIENS</div>
-      ${renderLine('ATT', struct.ATT)}
-      ${renderLine('MIL', struct.MIL)}
-      ${renderLine('DEF', struct.DEF)}
-      ${renderLine('GK',  struct.GK)}
+    `<div style="background:linear-gradient(180deg,#1a6b3c,#0a3d1e);border-radius:12px;padding:16px;margin-bottom:14px;overflow-x:auto;text-align:center">
+      <div style="font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:1px;margin-bottom:10px">SCHÉMA DES POSTES ET LIENS</div>
+      ${renderGrid()}
     </div>
     <div style="background:#f0f8f0;border-radius:10px;padding:12px 14px">
-      <div style="font-size:12px;font-weight:700;color:#1A6B3C;margin-bottom:6px">📌 Système de liens (GDD §7)</div>
+      <div style="font-size:12px;font-weight:700;color:#1A6B3C;margin-bottom:4px">📌 Liens (GDD §7)</div>
       <div style="font-size:12px;color:#333;line-height:1.6">
-        Deux joueurs <b>adjacents</b> (reliés par une ligne) qui partagent le même <b>pays</b> ou le même <b>club</b> donnent chacun <b>+1</b> à la note de l'action.
+        Deux joueurs <b>adjacents</b> (↔ horizontal ou ↕ vertical) partageant le même <b>pays</b> ou le même <b>club</b> donnent <b>+1</b> à l'action.
       </div>
     </div>`,
     `<button class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.add('hidden')">Fermer</button>`
@@ -403,15 +461,15 @@ function openCardDetail(card, allPlayerCards, countByPlayer, ctx) {
             <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:#666">${p.firstname}</div>
             <div style="font-size:14px;font-weight:900;color:#111;font-family:Arial Black,Arial;line-height:1.1">${(p.surname_encoded||'').toUpperCase()}</div>
           </div>
-          <div style="position:relative;height:72px;background:#f2e8d2;display:flex;flex-direction:column;align-items:center;justify-content:center">
-            <div style="position:absolute;width:100%;height:13px;background:${jobColor}"></div>
-            <svg width="52" height="50" viewBox="0 0 52 50" style="position:relative;z-index:2;display:block">
-              <polygon points="26,3 31.5,18 48,18 35,29 39.5,46 26,36 12.5,46 17,29 4,18 20.5,18" fill="${jobColor}" stroke="#0005" stroke-width="2"/>
-              <text x="26" y="32" text-anchor="middle" font-size="16" font-weight="900" fill="white" font-family="Arial Black,Arial">${note1}</text>
+          <div style="position:relative;height:80px;background:#f2e8d2;display:flex;flex-direction:column;align-items:center">
+            <div style="position:absolute;top:16px;width:100%;height:28px;background:${jobColor}"></div>
+            <svg width="54" height="52" viewBox="0 0 54 52" style="position:absolute;top:4px;z-index:2;display:block">
+              <polygon points="27,3 33,18 50,18 37,29 41,47 27,37 13,47 17,29 4,18 21,18" fill="${jobColor}" stroke="white" stroke-width="2.5"/>
+              <text x="27" y="33" text-anchor="middle" font-size="16" font-weight="900" fill="white" font-family="Arial Black,Arial">${note1}</text>
             </svg>
             ${note2 !== null ? `
-            <svg width="32" height="31" viewBox="0 0 32 31" style="position:relative;z-index:2;display:block;margin-top:-4px">
-              <polygon points="16,2 19.5,11 30,11 22,17.5 25,27 16,21.5 7,27 10,17.5 2,11 12.5,11" fill="${job2Color}" stroke="#0004" stroke-width="1.5"/>
+            <svg width="32" height="31" viewBox="0 0 32 31" style="position:absolute;top:50px;z-index:2;display:block">
+              <polygon points="16,2 19.5,11 30,11 22,17.5 25,27 16,21.5 7,27 10,17.5 2,11 12.5,11" fill="${job2Color}" stroke="white" stroke-width="1.5"/>
               <text x="16" y="20" text-anchor="middle" font-size="9" font-weight="900" fill="white" font-family="Arial Black,Arial">${note2}</text>
             </svg>` : ''}
           </div>
