@@ -1,9 +1,7 @@
 /**
  * Manager Wars — Logique de jeu pure (GDD §7 & §8)
- * Calculs de liens, notes d'attaque/défense, duel milieu, résolution
  */
 
-// ── Game Changers (GDD §4.1) ──────────────────────────────
 export const GC_DEFS = {
   'Ressusciter':    { icon:'💫', desc:'Réactive un joueur grisé pour ce match.' },
   'Double attaque': { icon:'⚡', desc:'La note d\'attaque compte double.' },
@@ -13,43 +11,39 @@ export const GC_DEFS = {
   'Remplacement+':  { icon:'🔄', desc:'+1 remplacement pour ce match.' },
 }
 
-// ── Notes par poste ───────────────────────────────────────
+// ── Note d'un joueur pour un rôle donné ───────────────────
+// Si le joueur joue hors de son poste, on utilise quand même sa note pour ce rôle
 export function getNoteForRole(player, role) {
   if (!player) return 0
   switch (role) {
-    case 'GK':  return player.note_g || 0
-    case 'DEF': return player.note_d || 0
-    case 'MIL': return player.note_m || 0
-    case 'ATT': return player.note_a || 0
+    case 'GK':  return Number(player.note_g) || 0
+    case 'DEF': return Number(player.note_d) || 0
+    case 'MIL': return Number(player.note_m) || 0
+    case 'ATT': return Number(player.note_a) || 0
     default:    return 0
   }
 }
 
-/**
- * Calcul du bonus de liens (GDD §7)
- * Les liens ne s'appliquent qu'entre joueurs ADJACENTS et sélectionnés.
- * +1 par lien Pays partagé, +1 par lien Club partagé entre paires adjacentes.
- * @param {Array} selected - liste ordonnée des joueurs sélectionnés (adjacents)
- * @returns {number} bonus total
- */
+// ── Note principale affichée sur la carte (poste du slot) ─
+export function getDisplayNote(player, slotRole) {
+  return getNoteForRole(player, slotRole)
+}
+
+// ── Bonus de liens (GDD §7) ───────────────────────────────
 export function calcLinks(selected) {
   let bonus = 0
   for (let i = 0; i < selected.length - 1; i++) {
     const a = selected[i]
     const b = selected[i + 1]
     if (!a || !b) continue
-    // Lien pays
     if (a.country_code && b.country_code && a.country_code === b.country_code) bonus += 1
-    // Lien club
     if (a.club_id && b.club_id && a.club_id === b.club_id) bonus += 1
   }
   return bonus
 }
 
-/**
- * Calcul de la note d'attaque (GDD §5.2)
- * Somme des notes ATT + bonus liens
- */
+// ── Note d'attaque (GDD §5.2) ─────────────────────────────
+// Toujours basé sur note_a, peu importe le poste du joueur
 export function calcAttack(selected, modifiers = {}) {
   let base = selected.reduce((sum, p) => sum + getNoteForRole(p, 'ATT'), 0)
   const links = calcLinks(selected)
@@ -59,67 +53,58 @@ export function calcAttack(selected, modifiers = {}) {
   return { base, links, total: Math.max(0, total) }
 }
 
-/**
- * Calcul de la note de défense (GDD §5.4)
- * Somme des notes DEF + bonus liens
- */
+// ── Note de défense (GDD §5.4) ────────────────────────────
+// GK → note_g, DEF → note_d, MIL/ATT utilisés en défense → note_d
+// Si aucun défenseur disponible → 0 (GDD Petit 4)
 export function calcDefense(selected, modifiers = {}) {
-  let base = selected.reduce((sum, p) => sum + getNoteForRole(p, 'DEF'), 0)
+  let base = 0
+  for (const p of selected) {
+    // GK utilise note_g, tout le reste utilise note_d
+    if (p._line === 'GK' || p.job === 'GK') {
+      base += getNoteForRole(p, 'GK')
+    } else {
+      base += getNoteForRole(p, 'DEF')
+    }
+  }
   const links = calcLinks(selected)
   let total = base + links
   if (modifiers.stolenNote) total -= modifiers.stolenNote
   return { base, links, total: Math.max(0, total) }
 }
 
-/**
- * Duel du milieu de terrain (GDD §4.1)
- * Somme notes MIL des joueurs sur postes milieux + liens
- */
+// ── Duel du milieu (GDD §4.1) ─────────────────────────────
 export function calcMidfieldDuel(midfielders) {
   const base = midfielders.reduce((sum, p) => sum + getNoteForRole(p, 'MIL'), 0)
   const links = calcLinks(midfielders)
   return base + links
 }
 
-/**
- * Résolution du duel (GDD §5.7)
- * Attaque > Défense → But ; sinon arrêté
- */
+// ── Résolution du duel (GDD §5.7) ────────────────────────
 export function resolveDuel(attackTotal, defenseTotal, modifiers = {}) {
-  if (modifiers.shield) {
-    return { goal: false, shielded: true }
-  }
+  if (modifiers.shield) return { goal: false, shielded: true }
   return { goal: attackTotal > defenseTotal, shielded: false }
 }
 
-/**
- * IA simple : choix de joueurs adjacents pour attaque ou défense
- * @param {Array} grid - grille de joueurs (avec used flag)
- * @param {string} mode - 'attack' | 'defense'
- * @param {string} difficulty - 'easy' | 'medium' | 'hard'
- */
+// ── IA : sélection de joueurs ─────────────────────────────
 export function aiSelectPlayers(availablePlayers, mode, difficulty = 'easy') {
-  const role = mode === 'attack' ? 'ATT' : 'DEF'
-  // Filtrer les joueurs disponibles
   const usable = availablePlayers.filter(p => !p.used)
   if (usable.length === 0) return []
 
-  // Trier par note décroissante pour le rôle
-  const sorted = [...usable].sort((a, b) => getNoteForRole(b, role) - getNoteForRole(a, role))
+  // Trier selon le bon critère
+  const sorted = [...usable].sort((a, b) => {
+    const noteA = mode === 'attack' ? getNoteForRole(a, 'ATT') : (a._line === 'GK' ? getNoteForRole(a,'GK') : getNoteForRole(a,'DEF'))
+    const noteB = mode === 'attack' ? getNoteForRole(b, 'ATT') : (b._line === 'GK' ? getNoteForRole(b,'GK') : getNoteForRole(b,'DEF'))
+    return noteB - noteA
+  })
 
-  // Difficulté détermine le nombre de joueurs et l'optimalité
-  let count
-  if (difficulty === 'easy')   count = 1 + Math.floor(Math.random() * 2)  // 1-2
-  else if (difficulty === 'medium') count = 2 + Math.floor(Math.random() * 2) // 2-3
-  else count = 3 // hard: toujours 3 si possible
-
+  let count = difficulty === 'easy' ? 1 + Math.floor(Math.random() * 2)
+            : difficulty === 'medium' ? 2 + Math.floor(Math.random() * 2)
+            : 3
   count = Math.min(count, sorted.length, 3)
   return sorted.slice(0, count)
 }
 
-/**
- * Récompenses selon mode (GDD §6.1)
- */
+// ── Récompenses (GDD §6.1) ───────────────────────────────
 export function getRewards(mode, result) {
   const table = {
     vs_ai_easy:   { victoire:500,  nul:250,  defaite:50 },
