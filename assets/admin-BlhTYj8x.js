@@ -1,4 +1,4 @@
-import{s as p,g as V}from"./supabase-BOyPgsCC.js";async function K(e){const[{count:n},{count:t},{count:a},{count:d},{count:r}]=await Promise.all([p.from("players").select("*",{count:"exact",head:!0}),p.from("clubs").select("*",{count:"exact",head:!0}),p.from("users").select("*",{count:"exact",head:!0}),p.from("cards").select("*",{count:"exact",head:!0}),p.from("matches").select("*",{count:"exact",head:!0})]);e.innerHTML=`
+import{s as p,g as V}from"./supabase-z_u0vv5N.js";async function K(e){const[{count:n},{count:t},{count:a},{count:d},{count:r}]=await Promise.all([p.from("players").select("*",{count:"exact",head:!0}),p.from("clubs").select("*",{count:"exact",head:!0}),p.from("users").select("*",{count:"exact",head:!0}),p.from("cards").select("*",{count:"exact",head:!0}),p.from("matches").select("*",{count:"exact",head:!0})]);e.innerHTML=`
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px">
       ${x("🃏","Joueurs (cartes)",n??"–","#1A6B3C")}
       ${x("🏟️","Clubs",t??"–","#D4A017")}
