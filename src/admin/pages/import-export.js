@@ -241,22 +241,31 @@ function downloadCSV(filename, content) {
 }
 
 function parseCSV(text) {
-  // Parser CSV simple gérant les guillemets
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim())
+  // Nettoyer BOM UTF-8 et normaliser les sauts de ligne
+  text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = text.split('\n').filter(l => l.trim())
   if (lines.length < 2) return []
 
-  const headers = parseCSVLine(lines[0]).map(h => h.trim())
+  // Détecter auto le séparateur ; ou , (Excel France utilise ;)
+  const firstLine = lines[0]
+  const sep = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ','
+
+  const headers = parseCSVLine(firstLine, sep).map(h =>
+    h.trim().replace(/^\uFEFF/, '').toLowerCase()
+  )
   const rows = []
   for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i])
+    if (!lines[i].trim()) continue
+    const values = parseCSVLine(lines[i], sep)
     const row = {}
     headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim() })
+    if (Object.values(row).every(v => !v)) continue
     rows.push(row)
   }
   return rows
 }
 
-function parseCSVLine(line) {
+function parseCSVLine(line, sep = ',') {
   const result = []
   let cur = ''
   let inQuotes = false
@@ -269,7 +278,7 @@ function parseCSVLine(line) {
       } else cur += c
     } else {
       if (c === '"') inQuotes = true
-      else if (c === ',') { result.push(cur); cur = '' }
+      else if (c === sep) { result.push(cur); cur = '' }
       else cur += c
     }
   }
