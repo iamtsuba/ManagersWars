@@ -42,6 +42,7 @@
   --tile-bg: #fff;
   --tile-fg: var(--gray-800);
   --tile-fg-on-page: var(--gray-800);
+  --tile-dark-bg: #3a3a3a;
 }
 
 /* ── Thème "dark" (inversé)
@@ -53,6 +54,7 @@
   --tile-bg: #fff;
   --tile-fg: var(--gray-800);
   --tile-fg-on-page: #fff;
+  --tile-dark-bg: #000;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
