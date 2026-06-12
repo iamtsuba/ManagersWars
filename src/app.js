@@ -118,7 +118,9 @@ function renderAppShell() {
 
   app.innerHTML = `
     <nav class="top-nav">
-      <div class="club-name" id="nav-club">${(p.club_name||'').toUpperCase()}</div>
+      <button class="nav-rankings-btn" id="nav-rankings" title="Classement">
+        <img src="${ICON}badge-trophy.png" alt="Classement">
+      </button>
       <div class="logo" id="nav-logo">
         <img src="${ICON}logo-withname.png" alt="Manager Wars" style="height:48px;width:auto;display:block">
       </div>
@@ -134,24 +136,34 @@ function renderAppShell() {
 
     <nav class="bottom-nav">
       <a href="#" data-page="home" class="active">
-        <span class="icon"><img src="${ICON}nav-home.png" alt="" style="height:32px;width:auto;display:block"></span>
-        <img class="nav-label" src="${ICON}nav-home-txt.png" alt="Accueil">
+        <div class="nav-icon-wrap">
+          <img src="${ICON}nav-home.png" alt="" class="nav-icon">
+          <img src="${ICON}nav-home-txt.png" alt="Accueil" class="nav-label">
+        </div>
       </a>
       <a href="#" data-page="collection">
-        <span class="icon"><img src="${ICON}nav-collection.png" alt="" style="height:32px;width:auto;display:block"></span>
-        <img class="nav-label" src="${ICON}nav-collection-txt.png" alt="Cartes">
+        <div class="nav-icon-wrap">
+          <img src="${ICON}nav-collection.png" alt="" class="nav-icon">
+          <img src="${ICON}nav-collection-txt.png" alt="Cartes" class="nav-label">
+        </div>
       </a>
       <a href="#" data-page="decks">
-        <span class="icon"><img src="${ICON}nav-decks.png" alt="" style="height:32px;width:auto;display:block"></span>
-        <img class="nav-label" src="${ICON}nav-deck-txt.png" alt="Decks">
+        <div class="nav-icon-wrap">
+          <img src="${ICON}nav-decks.png" alt="" class="nav-icon">
+          <img src="${ICON}nav-deck-txt.png" alt="Decks" class="nav-label">
+        </div>
       </a>
       <a href="#" data-page="boosters">
-        <span class="icon"><img src="${ICON}nav-boosters.png" alt="" style="height:32px;width:auto;display:block"></span>
-        <img class="nav-label" src="${ICON}nav-boosters-txt.png" alt="Boosters">
+        <div class="nav-icon-wrap">
+          <img src="${ICON}nav-boosters.png" alt="" class="nav-icon">
+          <img src="${ICON}nav-boosters-txt.png" alt="Boosters" class="nav-label">
+        </div>
       </a>
       <a href="#" data-page="market">
-        <span class="icon"><img src="${ICON}nav-market.png" alt="" style="height:32px;width:auto;display:block"></span>
-        <img class="nav-label" src="${ICON}nav-market-txt.png" alt="Marché">
+        <div class="nav-icon-wrap">
+          <img src="${ICON}nav-market.png" alt="" class="nav-icon">
+          <img src="${ICON}nav-market-txt.png" alt="Marché" class="nav-label">
+        </div>
       </a>
     </nav>
   `
@@ -165,6 +177,7 @@ function renderAppShell() {
   })
   document.getElementById('nav-logo').addEventListener('click', () => navigate('home'))
   document.getElementById('nav-credits').addEventListener('click', () => navigate('boosters'))
+  document.getElementById('nav-rankings').addEventListener('click', () => navigate('rankings'))
 
   // Toggle thème
   document.getElementById('theme-toggle').addEventListener('click', () => {
