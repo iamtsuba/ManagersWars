@@ -118,9 +118,6 @@ function renderAppShell() {
 
   app.innerHTML = `
     <nav class="top-nav">
-      <button class="nav-rankings-btn" id="nav-rankings" title="Classement">
-        <img src="${ICON}badge-trophy.png" alt="Classement">
-      </button>
       <div class="logo" id="nav-logo">
         <img src="${ICON}logo-withname.png" alt="Manager Wars" style="height:48px;width:auto;display:block">
       </div>
@@ -177,7 +174,6 @@ function renderAppShell() {
   })
   document.getElementById('nav-logo').addEventListener('click', () => navigate('home'))
   document.getElementById('nav-credits').addEventListener('click', () => navigate('boosters'))
-  document.getElementById('nav-rankings').addEventListener('click', () => navigate('rankings'))
 
   // Toggle thème
   document.getElementById('theme-toggle').addEventListener('click', () => {
