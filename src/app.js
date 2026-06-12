@@ -109,7 +109,7 @@ function renderAppShell() {
   app.innerHTML = `
     <nav class="top-nav">
       <div class="logo" id="nav-logo" style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <img src="/icons/logo.png" alt="Manager Wars" style="height:36px;width:auto;display:block">
+        <img src="${import.meta.env.BASE_URL}icons/logo.png" alt="Manager Wars" style="height:36px;width:auto;display:block">
         <span style="font-weight:900;font-size:17px;letter-spacing:0.5px;color:var(--green)">Manager Wars</span>
       </div>
       <div id="nav-credits" class="credits">💰 ${(p.credits||0).toLocaleString('fr')}</div>
@@ -119,23 +119,23 @@ function renderAppShell() {
 
     <nav class="bottom-nav">
       <a href="#" data-page="home" class="active">
-        <span class="icon"><img src="/icons/nav-home.png" alt="Accueil" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-home.png" alt="Accueil" style="height:26px;width:auto;display:block"></span>
         <span>Accueil</span>
       </a>
       <a href="#" data-page="collection">
-        <span class="icon"><img src="/icons/nav-collection.png" alt="Cartes" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-collection.png" alt="Cartes" style="height:26px;width:auto;display:block"></span>
         <span>Cartes</span>
       </a>
       <a href="#" data-page="decks">
-        <span class="icon"><img src="/icons/nav-decks.png" alt="Decks" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-decks.png" alt="Decks" style="height:26px;width:auto;display:block"></span>
         <span>Decks</span>
       </a>
       <a href="#" data-page="boosters">
-        <span class="icon"><img src="/icons/nav-boosters.png" alt="Boosters" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-boosters.png" alt="Boosters" style="height:26px;width:auto;display:block"></span>
         <span>Boosters</span>
       </a>
       <a href="#" data-page="market">
-        <span class="icon"><img src="/icons/nav-market.png" alt="Marché" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-market.png" alt="Marché" style="height:26px;width:auto;display:block"></span>
         <span>Marché</span>
       </a>
     </nav>
