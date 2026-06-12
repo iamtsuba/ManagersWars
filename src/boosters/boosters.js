@@ -1,10 +1,10 @@
 import { supabase } from '../lib/supabase.js'
 
 const BOOSTERS = [
-  { id:'players_std',  img:'/icons/booster-players.png',     name:'Players',       sub:'5 cartes joueurs',  cost:5000,  costLabel:'5 000 crédits', cardCount:5, type:'player' },
-  { id:'players_pub',  img:'/icons/booster-silver.png',       name:'Players (pub)', sub:'3 cartes joueurs',  cost:0,     costLabel:'1 pub',         cardCount:3, type:'player' },
-  { id:'game_changer', img:'/icons/booster-gamechanger.png',  name:'Game Changer',  sub:'3 cartes spéciales',cost:10000, costLabel:'10 000 crédits',cardCount:3, type:'game_changer' },
-  { id:'formation',    img:'/icons/booster-formation.png',    name:'Formation',     sub:'1 carte formation', cost:10000, costLabel:'10 000 crédits',cardCount:1, type:'formation' },
+  { id:'players_std',  img: import.meta.env.BASE_URL+'icons/booster-players.png',     name:'Players',       sub:'5 cartes joueurs',  cost:5000,  costLabel:'5 000 crédits', cardCount:5, type:'player' },
+  { id:'players_pub',  img: import.meta.env.BASE_URL+'icons/booster-silver.png',       name:'Players (pub)', sub:'3 cartes joueurs',  cost:0,     costLabel:'1 pub',         cardCount:3, type:'player' },
+  { id:'game_changer', img: import.meta.env.BASE_URL+'icons/booster-gamechanger.png',  name:'Game Changer',  sub:'3 cartes spéciales',cost:10000, costLabel:'10 000 crédits',cardCount:3, type:'game_changer' },
+  { id:'formation',    img: import.meta.env.BASE_URL+'icons/booster-formation.png',    name:'Formation',     sub:'1 carte formation', cost:10000, costLabel:'10 000 crédits',cardCount:1, type:'formation' },
 ]
 
 const GC_DEFS = {
