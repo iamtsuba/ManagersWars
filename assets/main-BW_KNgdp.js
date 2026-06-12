@@ -1,4 +1,4 @@
-import{s as w}from"./supabase-3x2kAdST.js";function re(t,{navigate:e,toast:i}){t.innerHTML=`
+import{s as w}from"./supabase-B22JUf_T.js";function re(t,{navigate:e,toast:i}){t.innerHTML=`
   <div class="auth-screen" style="animation:fadeIn 0.4s ease">
     <div class="auth-box">
       <div class="logo">⚽</div>
