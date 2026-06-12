@@ -31,32 +31,28 @@
   --radius: 8px;
   --radius-lg: 12px;
   --shadow: 0 2px 12px rgba(0,0,0,0.12);
-
-  /* ── Thème "light" (actuel/par défaut historique) ── */
-  --nav-bg: var(--green-dark);
-  --nav-fg: #fff;
-  --page-bg: var(--gray-100);
-  --tile-bg: #fff;
-  --tile-fg: var(--gray-800);
 }
 
-/* ── Thème "dark" (NOUVEAU — par défaut) ───────────────────
-   Bandeaux noirs, fond vert, tuiles blanches */
-:root, [data-theme="dark"] {
+/* ── Thème "light" (NOUVEAU PAR DÉFAUT — celui du kit graphique)
+   Bandeaux noirs, fond gris clair, tuiles blanches ── */
+:root, [data-theme="light"] {
   --nav-bg: #111;
   --nav-fg: #fff;
-  --page-bg: var(--green);
-  --tile-bg: #fff;
-  --tile-fg: var(--gray-800);
-}
-
-/* ── Thème "light" (alternatif — ancien design) ── */
-[data-theme="light"] {
-  --nav-bg: var(--green-dark);
-  --nav-fg: #fff;
   --page-bg: var(--gray-100);
   --tile-bg: #fff;
   --tile-fg: var(--gray-800);
+  --tile-fg-on-page: var(--gray-800);
+}
+
+/* ── Thème "dark" (inversé)
+   Bandeaux gris foncé, fond noir, tuiles blanches ── */
+[data-theme="dark"] {
+  --nav-bg: #2a2a2a;
+  --nav-fg: #fff;
+  --page-bg: #0a0a0a;
+  --tile-bg: #fff;
+  --tile-fg: var(--gray-800);
+  --tile-fg-on-page: #fff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
