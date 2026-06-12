@@ -1,38 +1,28 @@
 /**
  * Manager Wars — SPA Router
- * Gère l'état global, navigation, et le flow complet du jeu
- * Basé uniquement sur le GDD v1.0
+ * Architecture : UN SEUL navigate() qui injecte toujours dans #page-content.
+ * Le shell (top-nav + bottom-nav) est rendu une seule fois et jamais écrasé.
  */
 import { supabase } from './lib/supabase.js'
-import { renderAuth } from './auth/auth.js'
-import { renderSetup } from './auth/setup.js'
-import { renderHome } from './home/home.js'
+import { renderAuth }       from './auth/auth.js'
+import { renderSetup }      from './auth/setup.js'
+import { renderHome }       from './home/home.js'
 import { renderCollection } from './collection/collection.js'
-import { renderDecks } from './decks/decks.js'
-import { renderBoosters } from './boosters/boosters.js'
-import { renderMatch } from './match/match.js'
-import { renderMarket } from './market/market.js'
-import { renderRankings } from './rankings/rankings.js'
+import { renderDecks }      from './decks/decks.js'
+import { renderBoosters }   from './boosters/boosters.js'
+import { renderMatch }      from './match/match.js'
+import { renderMarket }     from './market/market.js'
+import { renderRankings }   from './rankings/rankings.js'
 
-// ── État global ──────────────────────────────────────────
+// ── État global ───────────────────────────────────────────
 export const state = {
-  user:    null,   // auth.user Supabase
-  profile: null,   // ligne table users
+  user:    null,
+  profile: null,
   page:    'home',
   params:  {},
 }
 
-// ── Contexte global ──────────────────────────────────────
-export const ctx = {
-  navigate:        null,
-  toast:           null,
-  openModal:       null,
-  closeModal:      null,
-  refreshProfile:  null,
-  state,
-}
-
-// ── Toast helper ──────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────
 export function toast(msg, type = 'info', duration = 3000) {
   const el = document.getElementById('toast')
   if (!el) return
@@ -42,7 +32,7 @@ export function toast(msg, type = 'info', duration = 3000) {
   el._t = setTimeout(() => { el.className = '' }, duration)
 }
 
-// ── Modal helpers ─────────────────────────────────────────
+// ── Modal ─────────────────────────────────────────────────
 export function openModal(title, bodyHTML, footerHTML = '') {
   document.getElementById('modal-title').textContent = title
   document.getElementById('modal-body').innerHTML   = bodyHTML
@@ -53,188 +43,198 @@ export function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden')
 }
 
-// ── Navigation ────────────────────────────────────────────
-export function navigate(page, params = {}) {
-  state.page   = page
-  state.params = params
-  render()
-}
-
 // ── Refresh profil ────────────────────────────────────────
 export async function refreshProfile() {
   if (!state.user) return
-  const { data } = await supabase
-    .from('users').select('*').eq('id', state.user.id).single()
+  const { data } = await supabase.from('users').select('*').eq('id', state.user.id).single()
   if (data) state.profile = data
 }
 
-// ── Render principal ──────────────────────────────────────
-async function render() {
-  const container = document.getElementById('app')
+// ── THÈME ─────────────────────────────────────────────────
+const THEME_KEY = 'mw_theme'
 
-  // Mettre à jour la nav
-  if (document.querySelector('.bottom-nav')) {
-    document.querySelectorAll('.bottom-nav a').forEach(a => {
-      a.classList.toggle('active', a.dataset.page === state.page)
-    })
+export function getTheme() {
+  return localStorage.getItem(THEME_KEY) || 'dark' // par défaut : noir
+}
+
+export function setTheme(theme) {
+  localStorage.setItem(THEME_KEY, theme)
+  applyTheme(theme)
+  // Persister côté serveur si profil connu
+  if (state.profile?.id) {
+    supabase.from('users').update({ theme }).eq('id', state.profile.id).then(() => {})
   }
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme)
+}
+
+// ── NAVIGATE — point d'entrée unique ─────────────────────
+export function navigate(page, params = {}) {
+  state.page   = page
+  state.params = params
+  renderPage()
+}
+
+async function renderPage() {
+  const container = document.getElementById('page-content')
+  if (!container) return
+
+  // Maj bottom-nav active
+  document.querySelectorAll('.bottom-nav a').forEach(a => {
+    a.classList.toggle('active', a.dataset.page === state.page)
+  })
+
+  // Maj crédits
   const credEl = document.getElementById('nav-credits')
   if (credEl && state.profile) {
     credEl.textContent = `💰 ${(state.profile.credits||0).toLocaleString('fr')}`
   }
 
-  const context = { state, navigate, toast, openModal, closeModal, refreshProfile }
+  const ctx = { state, navigate, toast, openModal, closeModal, refreshProfile }
+
+  container.innerHTML = '<div style="padding:40px;text-align:center;color:#aaa">⚽</div>'
 
   switch (state.page) {
-    case 'home':       await renderHome(container, context);       break
-    case 'collection': await renderCollection(container, context); break
-    case 'decks':      await renderDecks(container, context);      break
-    case 'boosters':   await renderBoosters(container, context);   break
-    case 'match':      await renderMatch(container, context);      break
-    case 'market':     await renderMarket(container, context);     break
-    case 'rankings':   await renderRankings(container, context);   break
-    default:           await renderHome(container, context);
+    case 'home':       await renderHome(container, ctx);       break
+    case 'collection': await renderCollection(container, ctx); break
+    case 'decks':      await renderDecks(container, ctx);      break
+    case 'boosters':   await renderBoosters(container, ctx);   break
+    case 'match':      await renderMatch(container, ctx);      break
+    case 'market':     await renderMarket(container, ctx);     break
+    case 'rankings':   await renderRankings(container, ctx);   break
+    default:           await renderHome(container, ctx);
   }
 }
 
-// ── Render app shell (layout persistant) ──────────────────
+// ── APP SHELL — construit UNE SEULE FOIS ─────────────────
 function renderAppShell() {
   const app = document.getElementById('app')
-  const p = state.profile
+  const p   = state.profile
   if (!p) return
 
-  const parts = (p.club_name || 'MW').split(' ').filter(Boolean)
-  const ini = parts.length >= 2 ? (parts[0][0]+parts[1][0]).toUpperCase() : (p.club_name||'MW').slice(0,2).toUpperCase()
+  const ICON = import.meta.env.BASE_URL + 'icons/'
 
   app.innerHTML = `
     <nav class="top-nav">
-      <div class="logo" id="nav-logo" style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <img src="${import.meta.env.BASE_URL}icons/logo.png" alt="Manager Wars" style="height:36px;width:auto;display:block">
-        <span style="font-weight:900;font-size:17px;letter-spacing:0.5px;color:var(--green)">Manager Wars</span>
+      <div class="logo" id="nav-logo">
+        <img src="${ICON}logo.png" alt="Manager Wars" style="height:36px;width:auto;display:block">
+        <span style="font-weight:900;font-size:17px;letter-spacing:0.5px">Manager Wars</span>
       </div>
-      <div id="nav-credits" class="credits">💰 ${(p.credits||0).toLocaleString('fr')}</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="nav-credits" class="credits">💰 ${(p.credits||0).toLocaleString('fr')}</div>
+        <button id="theme-toggle" class="theme-toggle-btn" title="Changer le thème">
+          <span id="theme-icon"></span>
+        </button>
+      </div>
     </nav>
 
     <main id="page-content" class="page"></main>
 
     <nav class="bottom-nav">
       <a href="#" data-page="home" class="active">
-        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-home.png" alt="Accueil" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${ICON}nav-home.png" alt="Accueil" style="height:26px;width:auto;display:block"></span>
         <span>Accueil</span>
       </a>
       <a href="#" data-page="collection">
-        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-collection.png" alt="Cartes" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${ICON}nav-collection.png" alt="Cartes" style="height:26px;width:auto;display:block"></span>
         <span>Cartes</span>
       </a>
       <a href="#" data-page="decks">
-        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-decks.png" alt="Decks" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${ICON}nav-decks.png" alt="Decks" style="height:26px;width:auto;display:block"></span>
         <span>Decks</span>
       </a>
       <a href="#" data-page="boosters">
-        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-boosters.png" alt="Boosters" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${ICON}nav-boosters.png" alt="Boosters" style="height:26px;width:auto;display:block"></span>
         <span>Boosters</span>
       </a>
       <a href="#" data-page="market">
-        <span class="icon"><img src="${import.meta.env.BASE_URL}icons/nav-market.png" alt="Marché" style="height:26px;width:auto;display:block"></span>
+        <span class="icon"><img src="${ICON}nav-market.png" alt="Marché" style="height:26px;width:auto;display:block"></span>
         <span>Marché</span>
       </a>
     </nav>
   `
 
-  // Navigation
+  // Attacher les listeners UNE SEULE FOIS
   document.querySelectorAll('.bottom-nav a').forEach(a => {
     a.addEventListener('click', e => {
       e.preventDefault()
       navigate(a.dataset.page)
     })
   })
-
   document.getElementById('nav-logo').addEventListener('click', () => navigate('home'))
   document.getElementById('nav-credits').addEventListener('click', () => navigate('boosters'))
+
+  // Toggle thème
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const current = getTheme()
+    const next = current === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    updateThemeIcon(next)
+  })
+  updateThemeIcon(getTheme())
 }
 
-// ── Bootstrap initial ─────────────────────────────────────
+function updateThemeIcon(theme) {
+  const el = document.getElementById('theme-icon')
+  if (!el) return
+  // dark = noir actuel -> icône proposant de passer au clair (soleil)
+  // light = clair -> icône proposant de revenir au sombre (lune)
+  el.textContent = theme === 'dark' ? '☀️' : '🌙'
+}
+
+// ── BOOTSTRAP ─────────────────────────────────────────────
 async function init() {
-  // Fermer modal
+  // Appliquer le thème sauvegardé avant tout rendu (évite le flash)
+  applyTheme(getTheme())
+
   document.getElementById('modal-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeModal()
   })
   document.getElementById('modal-close').addEventListener('click', closeModal)
 
-  // Vérifier session Supabase
   const { data: { session } } = await supabase.auth.getSession()
 
   if (!session) {
     hideLoader()
-    renderAuth(document.getElementById('app'), { navigate, toast })
+    renderAuth(document.getElementById('app'), { navigate: () => window.location.reload(), toast })
     return
   }
 
   state.user = session.user
   await refreshProfile()
-
   hideLoader()
 
-  // Pas de profil → setup
   if (!state.profile) {
-    renderSetup(document.getElementById('app'), { state, navigate, toast, refreshProfile })
+    renderSetup(document.getElementById('app'), { state, navigate: async () => { await refreshProfile(); launchApp() }, toast, refreshProfile })
     return
   }
 
-  // Injecter le layout
-  document.getElementById('app').style.display = 'flex'
-  document.getElementById('app').style.flexDirection = 'column'
-  renderAppShell()
-
-  // Redéfinir render pour utiliser page-content
-  const origRender = render
-  window._render = async function() {
-    const container = document.getElementById('page-content')
-    if (!container) return
-
-    // Mettre à jour la nav
-    document.querySelectorAll('.bottom-nav a').forEach(a => {
-      a.classList.toggle('active', a.dataset.page === state.page)
-    })
-    const credEl = document.getElementById('nav-credits')
-    if (credEl && state.profile) {
-      credEl.textContent = `💰 ${(state.profile.credits||0).toLocaleString('fr')}`
-    }
-
-    const context = { state, navigate, toast, openModal, closeModal, refreshProfile }
-    switch (state.page) {
-      case 'home':       await renderHome(container, context);       break
-      case 'collection': await renderCollection(container, context); break
-      case 'decks':      await renderDecks(container, context);      break
-      case 'boosters':   await renderBoosters(container, context);   break
-      case 'match':      await renderMatch(container, context);      break
-      case 'market':     await renderMarket(container, context);     break
-      case 'rankings':   await renderRankings(container, context);   break
-      default:           await renderHome(container, context);
-    }
+  // Appliquer le thème sauvegardé en BDD si présent (prioritaire sur localStorage)
+  if (state.profile.theme && state.profile.theme !== getTheme()) {
+    localStorage.setItem(THEME_KEY, state.profile.theme)
+    applyTheme(state.profile.theme)
   }
 
-  // Override navigate pour utiliser page-content
-  globalThis.mwNavigate = function(page, params = {}) {
-    state.page   = page
-    state.params = params
-    window._render()
-  }
+  launchApp()
 
-  // Rendre la première page
-  window._render()
-
-  // Écouter les changements d'auth
   supabase.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_OUT') {
       state.user = null
       state.profile = null
       document.getElementById('app').innerHTML = ''
-      hideLoader(); showLoader()
-      renderAuth(document.getElementById('app'), { navigate, toast })
-      hideLoader()
+      renderAuth(document.getElementById('app'), { navigate: () => window.location.reload(), toast })
     }
   })
+}
+
+function launchApp() {
+  const app = document.getElementById('app')
+  app.style.display = 'flex'
+  app.style.flexDirection = 'column'
+  renderAppShell()
+  renderPage()
 }
 
 function hideLoader() {
@@ -244,8 +244,6 @@ function hideLoader() {
     l.style.transition = 'opacity 0.3s'
     setTimeout(() => l.style.display = 'none', 300)
   }
-  document.getElementById('app').style.display = 'flex'
 }
-function showLoader() { /* noop */ }
 
 init()
