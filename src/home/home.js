@@ -13,92 +13,41 @@ export async function renderHome(container, { state, navigate, toast }) {
     .order('created_at', { ascending: false })
     .limit(3)
 
-  const parts = (p.club_name || 'MW').split(' ').filter(Boolean)
-  const ini = parts.length >= 2 ? (parts[0][0]+parts[1][0]).toUpperCase() : (p.club_name||'MW').slice(0,2).toUpperCase()
-
   container.innerHTML = `
   <div class="page">
     <div class="page-body">
 
-      <!-- Hero profil -->
-      <div class="hero">
+      <!-- Bandeau pseudo (couleurs du club) -->
+      <div class="hero hero-compact" style="background:${p.club_color1};border:2px solid ${p.club_color2}">
         <div class="info">
-          <h3>${p.pseudo}</h3>
+          <h3 style="margin:0">${p.pseudo}</h3>
           <div class="level">Niveau ${p.level} · ${p.club_name}</div>
-          <div class="stats">
-            <div class="stat"><span class="val">${p.wins}</span><span class="lbl">V</span></div>
-            <div class="stat"><span class="val">${p.trophies_top1}</span><span class="lbl">TOP1</span></div>
-            <div class="stat"><span class="val">${(p.credits||0).toLocaleString('fr')}</span><span class="lbl">Crédits</span></div>
-          </div>
-        </div>
-        <div class="logo-big" style="background:${p.club_color2};border-color:${p.club_color1}">
-          <span style="color:${p.club_color1}">${ini}</span>
         </div>
       </div>
 
-      <!-- Ranked -->
-      <div class="ranked-banner">
-        <img src="${import.meta.env.BASE_URL}icons/badge-legendary.png" alt="" class="ranked-icon">
-        <img src="${import.meta.env.BASE_URL}icons/badge-ranked.png" alt="Ranked" class="ranked-text">
+      <!-- Ranked (bouton) -->
+      <div class="ranked-banner play-card" data-action="ranked">
+        <img src="${import.meta.env.BASE_URL}icons/badge-ranked.png" alt="" class="play-icon">
+        <img src="${import.meta.env.BASE_URL}icons/badge-ranked-txt.png" alt="Ranked" class="play-text-overlay">
       </div>
 
-      <!-- Jeu -->
-      <div>
-        <div class="section-title">🎮 Jouer</div>
-        <div class="play-grid">
-          <div class="play-card" data-action="match-ai">
-            <img src="${import.meta.env.BASE_URL}icons/badge-ai.png" alt="" class="play-icon">
-            <img src="${import.meta.env.BASE_URL}icons/badge-matchia-txt.png" alt="Match IA" class="play-text" onerror="this.style.display='none'">
-          </div>
-          <div class="play-card" data-action="match-random">
-            <img src="${import.meta.env.BASE_URL}icons/badge-vs.png" alt="" class="play-icon">
-            <img src="${import.meta.env.BASE_URL}icons/badge-random.png" alt="Match Random" class="play-text">
-          </div>
-          <div class="play-card" data-action="match-friend">
-            <img src="${import.meta.env.BASE_URL}icons/badge-championship.png" alt="" class="play-icon">
-            <img src="${import.meta.env.BASE_URL}icons/badge-matchfriend.png" alt="Match Friend" class="play-text">
-          </div>
-          <div class="play-card" data-action="championship">
-            <img src="${import.meta.env.BASE_URL}icons/badge-trophy.png" alt="" class="play-icon">
-            <img src="${import.meta.env.BASE_URL}icons/badge-minileague-txt.png" alt="Mini League" class="play-text" onerror="this.style.display='none'">
-          </div>
+      <!-- Jeu : 4 tuiles -->
+      <div class="play-grid">
+        <div class="play-card" data-action="match-ai">
+          <img src="${import.meta.env.BASE_URL}icons/badge-ai.png" alt="" class="play-icon">
+          <img src="${import.meta.env.BASE_URL}icons/badge-ai-txt.png" alt="Match IA" class="play-text-overlay">
         </div>
-      </div>
-
-      <!-- Collection rapide -->
-      <div>
-        <div class="section-title">
-          🃏 Ma collection
-          <a href="#" data-nav="collection">Voir tout</a>
+        <div class="play-card" data-action="match-random">
+          <img src="${import.meta.env.BASE_URL}icons/badge-random.png" alt="" class="play-icon">
+          <img src="${import.meta.env.BASE_URL}icons/badge-random-txt.png" alt="Match Random" class="play-text-overlay">
         </div>
-        <div class="action-grid" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="action-card" data-nav="collection">
-            <div class="icon">📖</div>
-            <div class="label">Cartes</div>
-          </div>
-          <div class="action-card" data-nav="decks">
-            <div class="icon">📋</div>
-            <div class="label">Decks</div>
-          </div>
-          <div class="action-card" data-nav="boosters">
-            <div class="icon">📦</div>
-            <div class="label">Boosters</div>
-          </div>
+        <div class="play-card" data-action="match-friend">
+          <img src="${import.meta.env.BASE_URL}icons/badge-vs.png" alt="" class="play-icon">
+          <img src="${import.meta.env.BASE_URL}icons/badge-vs-txt.png" alt="Match Friend" class="play-text-overlay">
         </div>
-      </div>
-
-      <!-- Marché & Classement -->
-      <div>
-        <div class="section-title">🌐 Marché & Social</div>
-        <div class="action-grid" style="grid-template-columns:1fr 1fr">
-          <div class="action-card" data-nav="market">
-            <div class="icon">🛒</div>
-            <div class="label">Marché</div>
-          </div>
-          <div class="action-card" data-nav="rankings">
-            <div class="icon">📊</div>
-            <div class="label">Classement</div>
-          </div>
+        <div class="play-card" data-action="mini-league">
+          <img src="${import.meta.env.BASE_URL}icons/badge-league.png" alt="" class="play-icon">
+          <img src="${import.meta.env.BASE_URL}icons/badge-league-txt.png" alt="Mini League" class="play-text-overlay">
         </div>
       </div>
 
@@ -154,10 +103,9 @@ export async function renderHome(container, { state, navigate, toast }) {
       setTimeout(() => el.classList.remove('tapped'), 200)
 
       const action = el.dataset.action
-      if (action === 'championship') { toast('Championnats — bientôt disponibles', 'info'); return }
-      if (action === 'match-random') { toast('Matchmaking aléatoire — bientôt disponible', 'info'); return }
-      if (action === 'match-friend') { toast('Défi ami — bientôt disponible', 'info'); return }
-      if (action === 'match-ai') showDifficultyPicker(navigate)
+      if (action === 'match-ai') { showDifficultyPicker(navigate); return }
+      // Tous les autres modes : bientôt disponible
+      toast('Bientôt disponible', 'info')
     })
   })
 
