@@ -31,6 +31,32 @@
   --radius: 8px;
   --radius-lg: 12px;
   --shadow: 0 2px 12px rgba(0,0,0,0.12);
+
+  /* ── Thème "light" (actuel/par défaut historique) ── */
+  --nav-bg: var(--green-dark);
+  --nav-fg: #fff;
+  --page-bg: var(--gray-100);
+  --tile-bg: #fff;
+  --tile-fg: var(--gray-800);
+}
+
+/* ── Thème "dark" (NOUVEAU — par défaut) ───────────────────
+   Bandeaux noirs, fond vert, tuiles blanches */
+:root, [data-theme="dark"] {
+  --nav-bg: #111;
+  --nav-fg: #fff;
+  --page-bg: var(--green);
+  --tile-bg: #fff;
+  --tile-fg: var(--gray-800);
+}
+
+/* ── Thème "light" (alternatif — ancien design) ── */
+[data-theme="light"] {
+  --nav-bg: var(--green-dark);
+  --nav-fg: #fff;
+  --page-bg: var(--gray-100);
+  --tile-bg: #fff;
+  --tile-fg: var(--gray-800);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
