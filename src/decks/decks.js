@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase.js'
+import { FORMATION_LINKS, FORMATION_POSITIONS, computeLinks, linkColor } from '../match/formation-links.js'
 
 const FORMATIONS = {
   '4-4-2': { GK:1, DEF:4, MIL:4, ATT:2 },
@@ -220,187 +221,139 @@ function renderDeckField(container, builder, positions, ctx) {
   const field = document.getElementById('deck-field')
   if (!field) return
 
-  const LINES_ORDER = ['ATT','MIL','DEF','GK']
-  const lineGroups  = LINES_ORDER.map(role => positions.filter(p => p.startsWith(role)))
-  const struct      = FORMATIONS[builder.formation] || FORMATIONS['4-4-2']
+  const formation = builder.formation
+  const FPOS      = FORMATION_POSITIONS[formation] || {}
+  const FLINKS    = FORMATION_LINKS[formation]     || []
 
-  function getColsForLine(n) {
-    if (n===1) return [1]
-    if (n===2) return [0,2]
-    if (n===3) return [0,1,2]
-    if (n===4) return [0,1,1,2]
-    if (n===5) return [0,1,1,1,2]
-    return [1]
+  // Build slots map : pos → player
+  const slots = {}
+  positions.forEach(pos => {
+    const id   = builder.slots[pos]
+    const card = id ? builder.playerCards.find(c => c.id === id) : null
+    slots[pos]  = card?.player || null
+  })
+
+  // ── Stats MIL pour badge ──────────────────────────────
+  const milPositions = positions.filter(p => p.startsWith('MIL'))
+  let milTotal = 0, milLinkBonus = 0
+  milPositions.forEach(pos => {
+    const p = slots[pos]
+    if (p) milTotal += Number(p.note_m)||0
+  })
+  FLINKS.forEach(([a,b]) => {
+    if (!a.startsWith('MIL') || !b.startsWith('MIL')) return
+    const c = linkColor(slots[a], slots[b])
+    if (c !== '#ff3333') milLinkBonus++
+  })
+
+  // ── Calcul de la taille SVG ───────────────────────────
+  const W = 320, H = 320
+  const R = 28   // rayon cercle joueur
+  const LINK_W = 4
+
+  function px(pos) {
+    const p = FPOS[pos]
+    if (!p) return null
+    return { x: p.x * W, y: p.y * H }
   }
 
-  function slotPlayer(pos) {
-    const id = builder.slots[pos]
-    if (!id) return null
-    return builder.playerCards.find(c => c.id === id)?.player || null
+  // ── Générer le SVG ────────────────────────────────────
+  let svgContent = ''
+
+  // 1. Liens d'abord (derrière les cercles)
+  for (const [posA, posB] of FLINKS) {
+    const a = px(posA), b = px(posB)
+    if (!a || !b) continue
+    const pA = slots[posA], pB = slots[posB]
+    const lc = linkColor(pA, pB)
+    const opacity = lc === '#ff3333' ? 0.3 : 0.9
+    const glow    = lc !== '#ff3333' ? `filter="url(#glow-${lc.replace('#','')})"`  : ''
+    svgContent += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+      stroke="${lc}" stroke-width="${LINK_W}" stroke-linecap="round"
+      opacity="${opacity}" ${glow}/>`
   }
 
-  // Couleurs corrigées : vert flashy, noir → rouge
-  function linkColor(pA, pB) {
-    if (!pA || !pB) return '#cc2222'        // rouge si aucun lien
-    const sc = pA.country_code && pB.country_code && pA.country_code === pB.country_code
-    const sk = pA.club_id && pB.club_id && pA.club_id === pB.club_id
-    if (sc && sk) return '#00e676'           // vert flashy : pays + club
-    if (sc || sk)  return '#D4A017'          // jaune : pays OU club
-    return '#cc2222'                         // rouge : aucun lien
+  // 2. Joueurs
+  for (const pos of positions) {
+    const c = px(pos)
+    if (!c) continue
+    const p     = slots[pos]
+    const role  = pos.replace(/\d+/,'')
+    const jobColors = { GK:'#111', DEF:'#bb2020', MIL:'#D4A017', ATT:'#1A6B3C' }
+    const bg    = jobColors[role] || '#555'
+    const note  = p ? Number(role==='GK'?p.note_g : role==='DEF'?p.note_d : role==='MIL'?p.note_m : p.note_a)||0 : null
+    const name  = p ? (p.surname_encoded||'').slice(0,8).toUpperCase() : ''
+
+    if (p) {
+      // Cercle rempli avec photo (via foreignObject si portrait, sinon couleur)
+      const portrait = getPortrait(p)
+      const portrait_id = `portrait-${pos}`
+
+      if (portrait) {
+        svgContent += `
+          <defs>
+            <clipPath id="clip-${pos}">
+              <circle cx="${c.x}" cy="${c.y}" r="${R}"/>
+            </clipPath>
+          </defs>
+          <image href="${portrait}" x="${c.x-R}" y="${c.y-R}" width="${R*2}" height="${R*2}"
+            clip-path="url(#clip-${pos})" preserveAspectRatio="xMidYMid slice" opacity="0.85"/>`
+      }
+      svgContent += `
+        <circle cx="${c.x}" cy="${c.y}" r="${R}" fill="${portrait?'transparent':bg}"
+          stroke="${bg}" stroke-width="2" ${!portrait?'':''}/>
+        <circle cx="${c.x}" cy="${c.y}" r="${R}" fill="${bg}" opacity="${portrait?'0.5':'1'}"
+          stroke="rgba(255,255,255,0.6)" stroke-width="2"/>
+        ${portrait?`<image href="${portrait}" x="${c.x-R}" y="${c.y-R}" width="${R*2}" height="${R*2}"
+          clip-path="url(#clip-${pos})" preserveAspectRatio="xMidYMid slice" opacity="0.9"/>` : ''}
+        <text x="${c.x}" y="${c.y-3}" text-anchor="middle" font-size="13" font-weight="900"
+          fill="white" font-family="Arial Black,Arial" style="text-shadow:0 1px 2px #000">${note}</text>
+        <text x="${c.x}" y="${c.y+11}" text-anchor="middle" font-size="6.5" fill="rgba(255,255,255,0.9)"
+          font-family="Arial">${name}</text>
+        <rect x="${c.x-R}" y="${c.y-R}" width="${R*2}" height="${R*2}"
+          fill="transparent" class="deck-slot-hit" data-pos="${pos}" style="cursor:pointer"/>`
+    } else {
+      svgContent += `
+        <circle cx="${c.x}" cy="${c.y}" r="${R}" fill="rgba(255,255,255,0.08)"
+          stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-dasharray="4,3"/>
+        <text x="${c.x}" y="${c.y-3}" text-anchor="middle" font-size="9" fill="rgba(255,255,255,0.5)"
+          font-family="Arial">${role}</text>
+        <text x="${c.x}" y="${c.y+10}" text-anchor="middle" font-size="14" fill="rgba(255,255,255,0.4)"
+          font-family="Arial">+</text>
+        <rect x="${c.x-R}" y="${c.y-R}" width="${R*2}" height="${R*2}"
+          fill="transparent" class="deck-slot-hit" data-pos="${pos}" style="cursor:pointer"/>`
+    }
   }
 
-  function noteAt(p, role) {
-    if (!p) return 0
-    return Number(role==='GK'?p.note_g : role==='DEF'?p.note_d : role==='MIL'?p.note_m : p.note_a)||0
-  }
-
-  // Calcul stats MIL (note totale + bonus liens) pour badge en haut à droite
-  const milLine = lineGroups.find(lg => lg[0]?.startsWith('MIL')) || []
-  let milTotal = 0, milLinks = 0
-  milLine.forEach(pos => { milTotal += noteAt(slotPlayer(pos), 'MIL') })
-  for (let i = 0; i < milLine.length - 1; i++) {
-    const c = linkColor(slotPlayer(milLine[i]), slotPlayer(milLine[i+1]))
-    if (c !== '#cc2222') milLinks++
-  }
-
-  const SLOT_W = 60, SLOT_H = 60, LINK_W = 12
+  // Filtres glow
+  const glowDefs = `
+    <defs>
+      <filter id="glow-00ff88" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-FFD700" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>`
 
   field.innerHTML = `
-    <div id="deck-terrain" style="position:relative;display:inline-block;width:100%">
-      ${milLine.length > 0 ? `
-        <div style="position:absolute;top:6px;right:8px;z-index:10;
-          background:rgba(212,160,23,0.9);color:#000;border-radius:8px;
-          padding:3px 8px;font-size:11px;font-weight:900;pointer-events:none">
-          MIL ${milTotal}${milLinks>0?` +${milLinks}`:''} ⚡
-        </div>` : ''}
-      <div id="deck-rows" style="display:flex;flex-direction:column;gap:0;align-items:center;padding:28px 0 8px"></div>
-      <svg id="deck-links-svg" style="position:absolute;inset:0;pointer-events:none;overflow:visible" width="100%" height="100%"></svg>
-    </div>`
+    <!-- Badge MIL -->
+    ${milPositions.length > 0 ? `
+    <div style="position:absolute;top:6px;right:8px;z-index:10;
+      background:rgba(212,160,23,0.95);color:#000;border-radius:8px;
+      padding:3px 10px;font-size:11px;font-weight:900;pointer-events:none">
+      MIL ${milTotal}${milLinkBonus > 0 ? ` +${milLinkBonus}` : ''} ⚡
+    </div>` : ''}
 
-  const rowsEl = document.getElementById('deck-rows')
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:380px;margin:0 auto">
+      ${glowDefs}
+      ${svgContent}
+    </svg>`
 
-  // ── Lignes de joueurs (sans note de ligne sauf MIL) ────
-  lineGroups.forEach((line, li) => {
-    const role = line[0]?.replace(/\d+/,'') || 'ATT'
-    const rowEl = document.createElement('div')
-    rowEl.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:0;position:relative'
-    rowEl.dataset.lineIdx = li
-
-    line.forEach((pos, idx) => {
-      const p       = slotPlayer(pos)
-      const color   = JOB_COLORS[role]
-      const note    = p ? noteAt(p, role) : null
-      const portrait = p ? getPortrait(p) : null
-
-      const slotEl = document.createElement('div')
-      slotEl.className = p ? 'formation-slot filled' : 'formation-slot'
-      slotEl.dataset.pos      = pos
-      slotEl.dataset.lineIdx  = li
-      slotEl.dataset.slotIdx  = idx
-      slotEl.style.cssText = `border-color:${p?color:'rgba(255,255,255,0.4)'};background:${p?color:'transparent'};cursor:pointer;position:relative;width:${SLOT_W}px;height:${SLOT_H}px;flex-shrink:0;`
-
-      if (p && portrait) {
-        const img = document.createElement('img')
-        img.src = portrait
-        img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px;opacity:0.75'
-        slotEl.appendChild(img)
-      }
-      if (p) {
-        slotEl.innerHTML += `
-          <div style="position:relative;z-index:1;font-size:16px;font-weight:900;color:#fff;text-shadow:0 1px 3px #0008;line-height:1">${note}</div>
-          <div style="position:relative;z-index:1;font-size:7px;color:#fff;text-shadow:0 1px 2px #0008;max-width:54px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${p.surname_encoded}</div>`
-      } else {
-        slotEl.innerHTML = `
-          <div style="font-size:9px;color:rgba(255,255,255,0.7)">${role}</div>
-          <div style="font-size:18px;color:rgba(255,255,255,0.5)">+</div>`
-      }
-      rowEl.appendChild(slotEl)
-
-      // Lien horizontal
-      if (idx < line.length - 1) {
-        const lc = linkColor(p, slotPlayer(line[idx+1]))
-        const linkEl = document.createElement('div')
-        linkEl.style.cssText = `width:${LINK_W}px;height:4px;border-radius:2px;background:${lc};flex-shrink:0;box-shadow:0 0 5px ${lc};opacity:0.9;`
-        rowEl.appendChild(linkEl)
-      }
-    })
-
-    rowsEl.appendChild(rowEl)
-    // Spacer (pas de stats texte par ligne)
-    const sp = document.createElement('div')
-    sp.style.cssText = 'height:8px'
-    rowsEl.appendChild(sp)
-  })
-
-  // ── Liens verticaux SVG ────────────────────────────────
-  // Logique étendue : on cherche les adjacences de COLONNE entre lignes.
-  // Une colonne logique d'une ligne peut être adjacente (±1) à une colonne de la ligne suivante.
-  requestAnimationFrame(() => {
-    const svg     = document.getElementById('deck-links-svg')
-    const terrain = document.getElementById('deck-terrain')
-    if (!svg || !terrain) return
-
-    const terrainRect = terrain.getBoundingClientRect()
-    svg.setAttribute('height', terrainRect.height)
-
-    for (let li = 0; li < lineGroups.length - 1; li++) {
-      const lineA = lineGroups[li]
-      const lineB = lineGroups[li + 1]
-      const roleA = lineA[0]?.replace(/\d+/,'') || 'ATT'
-      const roleB = lineB[0]?.replace(/\d+/,'') || 'DEF'
-      const colsA = getColsForLine(struct[roleA]||1)
-      const colsB = getColsForLine(struct[roleB]||1)
-
-      // Pour chaque paire (slotA, slotB) : lier si colonnes logiques adjacentes (|diff|<=1)
-      // ET pas déjà liées (éviter doublons)
-      const drawn = new Set()
-
-      for (let ia = 0; ia < lineA.length; ia++) {
-        for (let ib = 0; ib < lineB.length; ib++) {
-          const colA = colsA[ia]
-          const colB = colsB[ib]
-          if (Math.abs(colA - colB) > 1) continue    // pas adjacents
-
-          const key = `${ia}-${ib}`
-          if (drawn.has(key)) continue
-          drawn.add(key)
-
-          const posA = lineA[ia]
-          const posB = lineB[ib]
-          const pA   = slotPlayer(posA)
-          const pB   = slotPlayer(posB)
-          const lc   = linkColor(pA, pB)
-
-          const elA = field.querySelector(`[data-pos="${posA}"]`)
-          const elB = field.querySelector(`[data-pos="${posB}"]`)
-          if (!elA || !elB) continue
-
-          const rA  = elA.getBoundingClientRect()
-          const rB  = elB.getBoundingClientRect()
-          const off = terrainRect
-
-          const x1 = rA.left - off.left + rA.width  / 2
-          const y1 = rA.top  - off.top  + rA.height
-          const x2 = rB.left - off.left + rB.width  / 2
-          const y2 = rB.top  - off.top
-
-          const svgLine = document.createElementNS('http://www.w3.org/2000/svg','line')
-          svgLine.setAttribute('x1', x1); svgLine.setAttribute('y1', y1)
-          svgLine.setAttribute('x2', x2); svgLine.setAttribute('y2', y2)
-          svgLine.setAttribute('stroke', lc)
-          svgLine.setAttribute('stroke-width', '3')
-          svgLine.setAttribute('stroke-linecap', 'round')
-          svgLine.setAttribute('opacity', lc === '#cc2222' ? '0.35' : '0.85')
-          if (lc !== '#cc2222') {
-            svgLine.setAttribute('filter', `drop-shadow(0 0 3px ${lc})`)
-          }
-          svg.appendChild(svgLine)
-        }
-      }
-    }
-  })
-
-  field.querySelectorAll('.formation-slot').forEach(el => {
+  // Events sur les slots
+  field.querySelectorAll('.deck-slot-hit').forEach(el => {
     el.addEventListener('click', () => openPlayerSelector(el.dataset.pos, builder, container, ctx))
   })
 }
