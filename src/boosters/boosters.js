@@ -1,10 +1,10 @@
 import { supabase } from '../lib/supabase.js'
 
 const BOOSTERS = [
-  { id:'players_std',  icon:'⚽', name:'Players',       sub:'5 cartes joueurs',  cost:5000,  costLabel:'5 000 crédits', cardCount:5, type:'player' },
-  { id:'players_pub',  icon:'📺', name:'Players (pub)', sub:'3 cartes joueurs',  cost:0,     costLabel:'1 pub',         cardCount:3, type:'player' },
-  { id:'game_changer', icon:'⚡', name:'Game Changer',  sub:'3 cartes spéciales',cost:10000, costLabel:'10 000 crédits',cardCount:3, type:'game_changer' },
-  { id:'formation',    icon:'🏟️', name:'Formation',     sub:'1 carte formation', cost:10000, costLabel:'10 000 crédits',cardCount:1, type:'formation' },
+  { id:'players_std',  img:'/icons/booster-players.png',     name:'Players',       sub:'5 cartes joueurs',  cost:5000,  costLabel:'5 000 crédits', cardCount:5, type:'player' },
+  { id:'players_pub',  img:'/icons/booster-silver.png',       name:'Players (pub)', sub:'3 cartes joueurs',  cost:0,     costLabel:'1 pub',         cardCount:3, type:'player' },
+  { id:'game_changer', img:'/icons/booster-gamechanger.png',  name:'Game Changer',  sub:'3 cartes spéciales',cost:10000, costLabel:'10 000 crédits',cardCount:3, type:'game_changer' },
+  { id:'formation',    img:'/icons/booster-formation.png',    name:'Formation',     sub:'1 carte formation', cost:10000, costLabel:'10 000 crédits',cardCount:1, type:'formation' },
 ]
 
 const GC_DEFS = {
@@ -46,7 +46,7 @@ export async function renderBoosters(container, { state, navigate, toast }) {
               background:rgba(0,0,0,0.15);border:none;cursor:pointer;font-size:11px;font-weight:700;
               color:var(--gray-600);display:flex;align-items:center;justify-content:center;z-index:2"
               onclick="event.stopPropagation()">ℹ</button>` : ''}
-            <div class="icon">${b.icon}</div>
+            <div class="icon"><img src="${b.img}" alt="${b.name}" style="height:64px;width:auto;display:block;margin:0 auto"></div>
             <div class="name">${b.name}</div>
             <div class="desc">${b.sub}</div>
             <div class="cost">${b.costLabel}</div>
@@ -227,12 +227,13 @@ function showBoosterAnimation(cards, booster, navigate) {
         z-index:3000;overflow:hidden;
       }
       .pack-visual {
-        width:160px;height:220px;border-radius:16px;
-        background:linear-gradient(135deg,#1A6B3C,#D4A017,#1A6B3C);
+        width:180px;height:280px;border-radius:16px;
+        background:transparent;
         display:flex;flex-direction:column;align-items:center;justify-content:center;
-        box-shadow:0 0 40px rgba(212,160,23,0.5);cursor:pointer;font-size:64px;
-        border:3px solid rgba(212,160,23,0.6);animation:packFloat 2s ease-in-out infinite;
+        filter:drop-shadow(0 0 30px rgba(212,160,23,0.5));cursor:pointer;
+        animation:packFloat 2s ease-in-out infinite;
       }
+      .pack-visual img { width:auto; height:100%; max-width:100%; object-fit:contain; }
       @keyframes packFloat {
         0%,100% { transform:translateY(0) rotate(-1deg); }
         50%      { transform:translateY(-8px) rotate(1deg); }
@@ -278,7 +279,7 @@ function showBoosterAnimation(cards, booster, navigate) {
       <div style="font-size:14px;color:rgba(255,255,255,0.7)">
         ${booster.name} · ${cards.length} carte${cards.length>1?'s':''}
       </div>
-      <div class="pack-visual" id="pack-visual">${booster.icon}</div>
+      <div class="pack-visual" id="pack-visual"><img src="${booster.img}" alt="${booster.name}"></div>
       <div style="font-size:13px;color:rgba(255,255,255,0.5)">Appuie pour ouvrir</div>
     </div>
 
