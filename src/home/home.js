@@ -19,10 +19,14 @@ export async function renderHome(container, { state, navigate, toast }) {
 
       <!-- Bandeau pseudo (couleurs du club) -->
       <div class="hero hero-compact" style="background:${p.club_color1};border:2px solid ${p.club_color2}">
+        <button class="nav-rankings-btn" id="nav-rankings" title="Classement">
+          <img src="${import.meta.env.BASE_URL}icons/badge-trophy.png" alt="Classement">
+        </button>
         <div class="info">
           <h3 style="margin:0">${p.pseudo}</h3>
           <div class="level">Niveau ${p.level} · ${p.club_name}</div>
         </div>
+        <div class="hero-compact-spacer"></div>
       </div>
 
       <!-- Ranked (bouton) -->
@@ -94,6 +98,8 @@ export async function renderHome(container, { state, navigate, toast }) {
       navigate(el.dataset.nav)
     })
   })
+
+  document.getElementById('nav-rankings')?.addEventListener('click', () => navigate('rankings'))
 
   // Actions jeu
   container.querySelectorAll('[data-action]').forEach(el => {
