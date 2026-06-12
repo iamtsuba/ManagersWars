@@ -4,7 +4,7 @@
    ===================================================== */
 
 /* ── Layout SPA ── */
-#app { min-height: 100vh; display: flex; flex-direction: column; }
+#app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ── Top Nav ── */
 .top-nav {
@@ -96,11 +96,11 @@
 
 /* ── Hero compact (bandeau pseudo, couleurs du club) ── */
 .hero-compact {
-  padding: 10px 16px; border-radius: var(--radius-lg);
-  display: flex; align-items: center; justify-content: center;
-  min-height: 0;
+  padding: 8px 12px; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 0; gap: 8px;
 }
-.hero-compact .info { text-align: center; }
+.hero-compact .info { flex: 1; text-align: center; }
 .hero-compact h3 {
   font-size: 16px; font-weight: 900; margin: 0;
   color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.4);
@@ -109,6 +109,9 @@
   font-size: 11px; opacity: .9; margin: 2px 0 0;
   color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.4);
 }
+.hero-compact .nav-rankings-btn { flex-shrink: 0; }
+.hero-compact .nav-rankings-btn img { height: 28px; }
+.hero-compact-spacer { width: 28px; flex-shrink: 0; }
 
 /* ── Section titles ── */
 .section-title {
