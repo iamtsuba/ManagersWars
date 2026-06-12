@@ -249,9 +249,8 @@ function launchApp() {
 function hideLoader() {
   const l = document.getElementById('app-loader')
   if (l) {
-    l.style.opacity = '0'
-    l.style.transition = 'opacity 0.3s'
-    setTimeout(() => l.style.display = 'none', 300)
+    l.classList.add('zoom-out')
+    setTimeout(() => l.style.display = 'none', 500)
   }
 }
 
