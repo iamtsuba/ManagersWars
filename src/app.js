@@ -54,7 +54,7 @@ export async function refreshProfile() {
 const THEME_KEY = 'mw_theme'
 
 export function getTheme() {
-  return localStorage.getItem(THEME_KEY) || 'dark' // par défaut : noir
+  return localStorage.getItem(THEME_KEY) || 'light' // par défaut : design du kit graphique
 }
 
 export function setTheme(theme) {
@@ -118,9 +118,9 @@ function renderAppShell() {
 
   app.innerHTML = `
     <nav class="top-nav">
+      <div class="club-name" id="nav-club">${(p.club_name||'').toUpperCase()}</div>
       <div class="logo" id="nav-logo">
-        <img src="${ICON}logo.png" alt="Manager Wars" style="height:36px;width:auto;display:block">
-        <span style="font-weight:900;font-size:17px;letter-spacing:0.5px">Manager Wars</span>
+        <img src="${ICON}logo-withname.png" alt="Manager Wars" style="height:48px;width:auto;display:block">
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <div id="nav-credits" class="credits">💰 ${(p.credits||0).toLocaleString('fr')}</div>
@@ -134,24 +134,24 @@ function renderAppShell() {
 
     <nav class="bottom-nav">
       <a href="#" data-page="home" class="active">
-        <span class="icon"><img src="${ICON}nav-home.png" alt="Accueil" style="height:26px;width:auto;display:block"></span>
-        <span>Accueil</span>
+        <span class="icon"><img src="${ICON}nav-home.png" alt="" style="height:32px;width:auto;display:block"></span>
+        <img class="nav-label" src="${ICON}nav-home-txt.png" alt="Accueil">
       </a>
       <a href="#" data-page="collection">
-        <span class="icon"><img src="${ICON}nav-collection.png" alt="Cartes" style="height:26px;width:auto;display:block"></span>
-        <span>Cartes</span>
+        <span class="icon"><img src="${ICON}nav-collection.png" alt="" style="height:32px;width:auto;display:block"></span>
+        <img class="nav-label" src="${ICON}nav-collection-txt.png" alt="Cartes">
       </a>
       <a href="#" data-page="decks">
-        <span class="icon"><img src="${ICON}nav-decks.png" alt="Decks" style="height:26px;width:auto;display:block"></span>
-        <span>Decks</span>
+        <span class="icon"><img src="${ICON}nav-decks.png" alt="" style="height:32px;width:auto;display:block"></span>
+        <img class="nav-label" src="${ICON}nav-deck-txt.png" alt="Decks">
       </a>
       <a href="#" data-page="boosters">
-        <span class="icon"><img src="${ICON}nav-boosters.png" alt="Boosters" style="height:26px;width:auto;display:block"></span>
-        <span>Boosters</span>
+        <span class="icon"><img src="${ICON}nav-boosters.png" alt="" style="height:32px;width:auto;display:block"></span>
+        <img class="nav-label" src="${ICON}nav-boosters-txt.png" alt="Boosters">
       </a>
       <a href="#" data-page="market">
-        <span class="icon"><img src="${ICON}nav-market.png" alt="Marché" style="height:26px;width:auto;display:block"></span>
-        <span>Marché</span>
+        <span class="icon"><img src="${ICON}nav-market.png" alt="" style="height:32px;width:auto;display:block"></span>
+        <img class="nav-label" src="${ICON}nav-market-txt.png" alt="Marché">
       </a>
     </nav>
   `
