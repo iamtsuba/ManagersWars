@@ -248,6 +248,8 @@ function launchApp() {
 
 function hideLoader() {
   const l = document.getElementById('app-loader')
+  const app = document.getElementById('app')
+  if (app) app.style.display = ''
   if (l) {
     l.classList.add('zoom-out')
     setTimeout(() => l.style.display = 'none', 500)
