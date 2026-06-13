@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase.js'
 import { GC_DEFS } from '../match/game-logic.js'
+import { FORMATION_LINKS } from '../match/formation-links.js'
 
 // ── Constantes ─────────────────────────────────────────────
 const RAR_COLORS  = { normal:'#ccc', pepite:'#D4A017', papyte:'#909090', legende:'#7a28b8' }
@@ -98,6 +99,39 @@ function renderCard(card, countBadge = '') {
   </div>`
 }
 
+// ── Rendu d'une carte joueur MANQUANTE (grisée, non possédée) ──
+function renderMissingCard(p) {
+  const job = p.job || 'ATT'
+  const note1 = getNote(p, job)
+  const country = COUNTRY_NAMES[p.country_code] || p.country_code || ''
+
+  return `
+  <div style="
+    width:140px;border-radius:12px;padding:6px;
+    background:#ccc;flex-shrink:0;position:relative;filter:grayscale(1);opacity:0.45
+  ">
+    <div style="background:#e8e8e8;border-radius:8px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:5px 6px 2px;text-align:center">
+        <div style="font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:#888">${p.firstname}</div>
+        <div style="font-size:14px;font-weight:900;color:#444;font-family:Arial Black,Arial;line-height:1.1">${(p.surname_encoded||'').toUpperCase()}</div>
+      </div>
+      <div style="position:relative;height:80px;background:#e8e8e8;display:flex;flex-direction:column;align-items:center">
+        <div style="position:absolute;top:16px;width:100%;height:28px;background:#999"></div>
+        <svg width="54" height="52" viewBox="0 0 54 52" style="position:absolute;top:4px;z-index:2;display:block">
+          <polygon points="27,3 33,18 50,18 37,29 41,47 27,37 13,47 17,29 4,18 21,18"
+            fill="#999" stroke="white" stroke-width="2.5"/>
+          <text x="27" y="33" text-anchor="middle" font-size="16" font-weight="900"
+            fill="white" font-family="Arial Black,Arial">${note1}</text>
+        </svg>
+      </div>
+      <div style="height:106px;overflow:hidden;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:36px;color:#aaa">👤</div>
+      <div style="background:#e8e8e8;padding:3px 6px;display:flex;align-items:center;justify-content:center;min-height:26px">
+        <div style="font-size:7px;letter-spacing:.8px;text-transform:uppercase;color:#999">${country}</div>
+      </div>
+    </div>
+  </div>`
+}
+
 // ── Page principale ────────────────────────────────────────
 export async function renderCollection(container, ctx) {
   const { state, navigate, toast, openModal, closeModal } = ctx
@@ -111,9 +145,20 @@ export async function renderCollection(container, ctx) {
         clubs(encoded_name, logo_url))`)
     .eq('owner_id', state.profile.id)
 
+  // Tous les joueurs actifs (pour le mode "Voir tout")
+  const { data: allPlayers } = await supabase
+    .from('players')
+    .select(`id, firstname, surname_encoded, country_code, club_id, job, job2,
+      note_g, note_d, note_m, note_a, rarity, note_min, note_max, skin, hair, hair_length,
+      clubs(encoded_name, logo_url)`)
+    .eq('is_active', true)
+
   const playerCards = (cards||[]).filter(c => c.card_type === 'player' && c.player)
   const gcCards     = (cards||[]).filter(c => c.card_type === 'game_changer')
   const formCards   = (cards||[]).filter(c => c.card_type === 'formation')
+
+  const ALL_FORMATIONS = Object.keys(FORMATION_LINKS)
+  const ALL_GC_TYPES   = Object.keys(GC_DEFS)
 
   // Compter les doublons par player_id
   const countByPlayer = {}
@@ -122,8 +167,14 @@ export async function renderCollection(container, ctx) {
     countByPlayer[pid] = (countByPlayer[pid] || 0) + 1
   })
 
+  const ownedPlayerIds  = new Set(Object.keys(countByPlayer).map(id => String(id)))
+  const ownedFormations = new Set(formCards.map(c => c.formation))
+  const ownedGcTypes    = new Set(gcCards.map(c => c.gc_type))
+
+  let activeTab    = 'player'   // 'player' | 'formation' | 'gc'
   let activeFilter = 'Tous'
-  let searchQ = ''
+  let searchQ      = ''
+  let showAll      = false
 
   // Trier les cartes joueurs : GK → DEF → MIL → ATT
   function sortedCards() {
@@ -135,9 +186,26 @@ export async function renderCollection(container, ctx) {
     })
   }
 
+  function sortedAllPlayers() {
+    return [...(allPlayers||[])].sort((a, b) => {
+      const iA = JOB_ORDER.indexOf(a.job)
+      const iB = JOB_ORDER.indexOf(b.job)
+      if (iA !== iB) return iA - iB
+      return (a.surname_encoded||'').localeCompare(b.surname_encoded||'')
+    })
+  }
+
   function filteredCards() {
     return sortedCards().filter(c => {
       const p = c.player
+      const matchJob    = activeFilter === 'Tous' || p.job === activeFilter
+      const matchSearch = !searchQ || `${p.firstname} ${p.surname_encoded}`.toLowerCase().includes(searchQ)
+      return matchJob && matchSearch
+    })
+  }
+
+  function filteredAllPlayers() {
+    return sortedAllPlayers().filter(p => {
       const matchJob    = activeFilter === 'Tous' || p.job === activeFilter
       const matchSearch = !searchQ || `${p.firstname} ${p.surname_encoded}`.toLowerCase().includes(searchQ)
       return matchJob && matchSearch
@@ -151,88 +219,157 @@ export async function renderCollection(container, ctx) {
       <p>${playerCards.length} carte(s) joueur · ${gcCards.length} Game Changer · ${formCards.length} Formation</p>
     </div>
 
-    <!-- Cartes spéciales (cliquables) -->
-    ${gcCards.length > 0 || formCards.length > 0 ? `
-    <div style="padding:12px 16px;border-bottom:1px solid var(--gray-200)">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Cartes spéciales</div>
-      <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">
-
-        ${gcCards.map(c => `
-          <div data-gc-id="${c.id}" data-gc-type="${c.gc_type}" style="
-            background:linear-gradient(135deg,#3d0a7a,#7a28b8);border:2px solid #9b59b6;
-            border-radius:12px;padding:12px;color:#fff;min-width:120px;flex-shrink:0;cursor:pointer;
-            display:flex;flex-direction:column;gap:4px">
-            <div style="font-size:28px">${GC_DEFS[c.gc_type]?.icon||'⚡'}</div>
-            <div style="font-size:8px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:10px;width:fit-content;letter-spacing:.4px">GAME CHANGER</div>
-            <div style="font-weight:700;font-size:13px">${c.gc_type}</div>
-          </div>`).join('')}
-
-        ${formCards.map(c => `
-          <div data-form-id="${c.id}" style="
-            background:linear-gradient(135deg,#1A6B3C,#2a8f52);border:2px solid #2a8f52;
-            border-radius:12px;padding:12px;color:#fff;min-width:100px;flex-shrink:0;cursor:pointer;
-            display:flex;flex-direction:column;gap:4px;align-items:flex-start">
-            <div style="font-size:28px">🏟️</div>
-            <div style="font-size:8px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:10px;width:fit-content;letter-spacing:.4px">FORMATION</div>
-            <div style="font-weight:900;font-size:18px">${c.formation}</div>
-          </div>`).join('')}
-
-      </div>
-    </div>` : ''}
-
-    <!-- Filtres -->
-    <div style="padding:10px 16px;background:#fff;border-bottom:1px solid var(--gray-200);display:flex;flex-direction:column;gap:8px">
-      <input id="col-search" placeholder="🔍 Rechercher un joueur..." style="font-size:13px">
-      <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">
-        ${JOB_FILTERS.map(f => `
-          <button class="filter-btn" data-job="${f}"
-            style="flex-shrink:0;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
-              border:1.5px solid ${f===activeFilter?'var(--green)':'var(--gray-200)'};
-              background:${f===activeFilter?'var(--green)':'#fff'};
-              color:${f===activeFilter?'#fff':'var(--gray-600)'}">
-            ${f}
-          </button>`).join('')}
-      </div>
+    <!-- Onglets -->
+    <div style="display:flex;border-bottom:1px solid var(--gray-200);background:#fff">
+      <button class="col-tab-btn" data-tab="player" style="flex:1;padding:12px 4px;border:none;background:none;cursor:pointer;
+        font-size:13px;font-weight:700;border-bottom:3px solid ${activeTab==='player'?'var(--green)':'transparent'};
+        color:${activeTab==='player'?'var(--green)':'var(--gray-600)'}">Joueurs</button>
+      <button class="col-tab-btn" data-tab="formation" style="flex:1;padding:12px 4px;border:none;background:none;cursor:pointer;
+        font-size:13px;font-weight:700;border-bottom:3px solid ${activeTab==='formation'?'var(--green)':'transparent'};
+        color:${activeTab==='formation'?'var(--green)':'var(--gray-600)'}">Formations</button>
+      <button class="col-tab-btn" data-tab="gc" style="flex:1;padding:12px 4px;border:none;background:none;cursor:pointer;
+        font-size:13px;font-weight:700;border-bottom:3px solid ${activeTab==='gc'?'var(--green)':'transparent'};
+        color:${activeTab==='gc'?'var(--green)':'var(--gray-600)'}">Game Changer</button>
     </div>
 
-    <!-- Grille cartes joueurs -->
+    <!-- Filtres -->
+    <div id="col-filters" style="padding:10px 16px;background:#fff;border-bottom:1px solid var(--gray-200);display:flex;flex-direction:column;gap:8px"></div>
+
+    <!-- Grille cartes -->
     <div class="page-body">
       <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start" id="col-grid"></div>
     </div>
   </div>`
 
-  // ── Rendu des cartes ────────────────────────────────────
+  // ── Rendu de la barre de filtres (dépend de l'onglet) ───
+  function renderFilters() {
+    const bar = document.getElementById('col-filters')
+    if (!bar) return
+
+    if (activeTab === 'player') {
+      bar.innerHTML = `
+        <input id="col-search" placeholder="🔍 Rechercher un joueur..." style="font-size:13px" value="${searchQ}">
+        <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;align-items:center">
+          ${JOB_FILTERS.map(f => `
+            <button class="filter-btn" data-job="${f}"
+              style="flex-shrink:0;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+                border:1.5px solid ${f===activeFilter?'var(--green)':'var(--gray-200)'};
+                background:${f===activeFilter?'var(--green)':'#fff'};
+                color:${f===activeFilter?'#fff':'var(--gray-600)'}">
+              ${f}
+            </button>`).join('')}
+          <button id="show-all-btn"
+            style="flex-shrink:0;margin-left:auto;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+              border:1.5px solid ${showAll?'var(--yellow)':'var(--gray-200)'};
+              background:${showAll?'var(--yellow)':'#fff'};
+              color:${showAll?'#fff':'var(--gray-600)'}">
+            ${showAll ? '✓ Tout afficher' : 'Voir tout'}
+          </button>
+        </div>`
+
+      document.getElementById('col-search').addEventListener('input', e => {
+        searchQ = e.target.value.toLowerCase()
+        renderCards()
+      })
+      container.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeFilter = btn.dataset.job
+          renderFilters()
+          renderCards()
+        })
+      })
+      document.getElementById('show-all-btn').addEventListener('click', () => {
+        showAll = !showAll
+        renderFilters()
+        renderCards()
+      })
+    } else {
+      // Formations / Game Changer : juste le toggle "Voir tout"
+      bar.innerHTML = `
+        <div style="display:flex;justify-content:flex-end">
+          <button id="show-all-btn"
+            style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;
+              border:1.5px solid ${showAll?'var(--yellow)':'var(--gray-200)'};
+              background:${showAll?'var(--yellow)':'#fff'};
+              color:${showAll?'#fff':'var(--gray-600)'}">
+            ${showAll ? '✓ Tout afficher' : 'Voir tout'}
+          </button>
+        </div>`
+      document.getElementById('show-all-btn').addEventListener('click', () => {
+        showAll = !showAll
+        renderFilters()
+        renderCards()
+      })
+    }
+  }
+
+  // ── Rendu des cartes selon l'onglet actif ───────────────
   function renderCards() {
-    const list = filteredCards()
     const grid = document.getElementById('col-grid')
     if (!grid) return
-    if (!list.length) {
-      grid.innerHTML = '<div style="width:100%;text-align:center;padding:40px;color:var(--gray-600)">Aucune carte.<br><small>Ouvre des boosters !</small></div>'
-      return
+
+    if (activeTab === 'player') {
+      renderPlayerGrid(grid)
+    } else if (activeTab === 'formation') {
+      renderFormationGrid(grid)
+    } else {
+      renderGCGrid(grid)
     }
+  }
 
-    // Dédupliquer pour affichage : une seule carte par joueur avec badge
-    const seen = {}
-    const deduped = []
-    list.forEach(card => {
-      const pid = card.player.id
-      if (!seen[pid]) {
-        seen[pid] = true
-        deduped.push(card)
+  function renderPlayerGrid(grid) {
+    if (showAll) {
+      const list = filteredAllPlayers()
+      if (!list.length) {
+        grid.innerHTML = '<div style="width:100%;text-align:center;padding:40px;color:var(--gray-600)">Aucun joueur.</div>'
+        return
       }
-    })
+      grid.innerHTML = list.map(p => {
+        const owned = ownedPlayerIds.has(String(p.id))
+        if (owned) {
+          const card  = playerCards.find(c => c.player.id === p.id)
+          const count = countByPlayer[p.id] || 1
+          const badge = count > 1
+            ? `<div style="position:absolute;top:4px;right:4px;background:#1A6B3C;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;z-index:3">×${count}</div>`
+            : ''
+          const forSale = playerCards.filter(c => c.player.id === p.id && c.is_for_sale).length
+          const saleBadge = forSale > 0
+            ? `<div style="position:absolute;top:4px;left:4px;background:#D4A017;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;z-index:3">🏷️</div>`
+            : ''
+          return renderCard(card, badge + saleBadge)
+        }
+        return renderMissingCard(p)
+      }).join('')
+    } else {
+      const list = filteredCards()
+      if (!list.length) {
+        grid.innerHTML = '<div style="width:100%;text-align:center;padding:40px;color:var(--gray-600)">Aucune carte.<br><small>Ouvre des boosters !</small></div>'
+        return
+      }
 
-    grid.innerHTML = deduped.map(card => {
-      const count = countByPlayer[card.player.id] || 1
-      const badge = count > 1
-        ? `<div style="position:absolute;top:4px;right:4px;background:#1A6B3C;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;z-index:3">×${count}</div>`
-        : ''
-      const forSale = playerCards.filter(c => c.player.id === card.player.id && c.is_for_sale).length
-      const saleBadge = forSale > 0
-        ? `<div style="position:absolute;top:4px;left:4px;background:#D4A017;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;z-index:3">🏷️</div>`
-        : ''
-      return renderCard(card, badge + saleBadge)
-    }).join('')
+      // Dédupliquer pour affichage : une seule carte par joueur avec badge
+      const seen = {}
+      const deduped = []
+      list.forEach(card => {
+        const pid = card.player.id
+        if (!seen[pid]) {
+          seen[pid] = true
+          deduped.push(card)
+        }
+      })
+
+      grid.innerHTML = deduped.map(card => {
+        const count = countByPlayer[card.player.id] || 1
+        const badge = count > 1
+          ? `<div style="position:absolute;top:4px;right:4px;background:#1A6B3C;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;z-index:3">×${count}</div>`
+          : ''
+        const forSale = playerCards.filter(c => c.player.id === card.player.id && c.is_for_sale).length
+        const saleBadge = forSale > 0
+          ? `<div style="position:absolute;top:4px;left:4px;background:#D4A017;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;z-index:3">🏷️</div>`
+          : ''
+        return renderCard(card, badge + saleBadge)
+      }).join('')
+    }
 
     grid.querySelectorAll('[data-card-id]').forEach(el => {
       el.addEventListener('click', () => {
@@ -242,39 +379,115 @@ export async function renderCollection(container, ctx) {
     })
   }
 
-  renderCards()
+  function renderFormationGrid(grid) {
+    const formationsToShow = showAll ? ALL_FORMATIONS : [...ownedFormations]
 
-  // Filtres
-  container.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeFilter = btn.dataset.job
-      container.querySelectorAll('.filter-btn').forEach(b => {
-        const a = b.dataset.job === activeFilter
-        b.style.background  = a ? 'var(--green)' : '#fff'
-        b.style.color       = a ? '#fff' : 'var(--gray-600)'
-        b.style.borderColor = a ? 'var(--green)' : 'var(--gray-200)'
+    if (!formationsToShow.length) {
+      grid.innerHTML = '<div style="width:100%;text-align:center;padding:40px;color:var(--gray-600)">Aucune carte Formation.<br><small>Ouvre un booster Formation !</small></div>'
+      return
+    }
+
+    grid.innerHTML = formationsToShow.map(formation => {
+      const owned = ownedFormations.has(formation)
+      if (owned) {
+        const card  = formCards.find(c => c.formation === formation)
+        const count = formCards.filter(c => c.formation === formation).length
+        const badge = count > 1
+          ? `<div style="position:absolute;top:4px;right:4px;background:#0a3d1e;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;z-index:3">×${count}</div>`
+          : ''
+        return `
+          <div data-form-id="${card.id}" style="
+            position:relative;background:linear-gradient(135deg,#1A6B3C,#2a8f52);border:2px solid #2a8f52;
+            border-radius:12px;padding:12px;color:#fff;min-width:100px;width:140px;flex-shrink:0;cursor:pointer;
+            display:flex;flex-direction:column;gap:4px;align-items:flex-start">
+            ${badge}
+            <div style="font-size:28px">🏟️</div>
+            <div style="font-size:8px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:10px;width:fit-content;letter-spacing:.4px">FORMATION</div>
+            <div style="font-weight:900;font-size:18px">${formation}</div>
+          </div>`
+      }
+      return `
+        <div style="
+          background:#ccc;border:2px solid #bbb;border-radius:12px;padding:12px;color:#888;
+          min-width:100px;width:140px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-start;
+          filter:grayscale(1);opacity:0.45">
+          <div style="font-size:28px">🏟️</div>
+          <div style="font-size:8px;background:rgba(0,0,0,0.1);padding:2px 6px;border-radius:10px;width:fit-content;letter-spacing:.4px">FORMATION</div>
+          <div style="font-weight:900;font-size:18px">${formation}</div>
+        </div>`
+    }).join('')
+
+    grid.querySelectorAll('[data-form-id]').forEach(el => {
+      el.addEventListener('click', () => {
+        const card = formCards.find(c => c.id === el.dataset.formId)
+        if (card) openFormationModal(card, formCards, ctx, openModal)
       })
+    })
+  }
+
+  function renderGCGrid(grid) {
+    const typesToShow = showAll ? ALL_GC_TYPES : [...ownedGcTypes]
+
+    if (!typesToShow.length) {
+      grid.innerHTML = '<div style="width:100%;text-align:center;padding:40px;color:var(--gray-600)">Aucune carte Game Changer.<br><small>Ouvre un booster Game Changer !</small></div>'
+      return
+    }
+
+    grid.innerHTML = typesToShow.map(type => {
+      const owned = ownedGcTypes.has(type)
+      const gc = GC_DEFS[type] || { icon:'⚡', desc:'' }
+      if (owned) {
+        const card  = gcCards.find(c => c.gc_type === type)
+        const count = gcCards.filter(c => c.gc_type === type).length
+        const badge = count > 1
+          ? `<div style="position:absolute;top:4px;right:4px;background:#3d0a7a;color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 6px;z-index:3">×${count}</div>`
+          : ''
+        return `
+          <div data-gc-id="${card.id}" data-gc-type="${type}" style="
+            position:relative;background:linear-gradient(135deg,#3d0a7a,#7a28b8);border:2px solid #9b59b6;
+            border-radius:12px;padding:12px;color:#fff;min-width:120px;width:140px;flex-shrink:0;cursor:pointer;
+            display:flex;flex-direction:column;gap:4px">
+            ${badge}
+            <div style="font-size:28px">${gc.icon}</div>
+            <div style="font-size:8px;background:rgba(255,255,255,0.2);padding:2px 6px;border-radius:10px;width:fit-content;letter-spacing:.4px">GAME CHANGER</div>
+            <div style="font-weight:700;font-size:13px">${type}</div>
+          </div>`
+      }
+      return `
+        <div style="
+          background:#ccc;border:2px solid #bbb;border-radius:12px;padding:12px;color:#888;
+          min-width:120px;width:140px;flex-shrink:0;display:flex;flex-direction:column;gap:4px;
+          filter:grayscale(1);opacity:0.45">
+          <div style="font-size:28px">${gc.icon}</div>
+          <div style="font-size:8px;background:rgba(0,0,0,0.1);padding:2px 6px;border-radius:10px;width:fit-content;letter-spacing:.4px">GAME CHANGER</div>
+          <div style="font-weight:700;font-size:13px">${type}</div>
+        </div>`
+    }).join('')
+
+    grid.querySelectorAll('[data-gc-id]').forEach(el => {
+      el.addEventListener('click', () => openGCModal(el.dataset.gcType, openModal))
+    })
+  }
+
+  // ── Onglets ──────────────────────────────────────────────
+  container.querySelectorAll('.col-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab
+      activeFilter = 'Tous'
+      searchQ = ''
+      showAll = false
+      container.querySelectorAll('.col-tab-btn').forEach(b => {
+        const a = b.dataset.tab === activeTab
+        b.style.borderBottomColor = a ? 'var(--green)' : 'transparent'
+        b.style.color = a ? 'var(--green)' : 'var(--gray-600)'
+      })
+      renderFilters()
       renderCards()
     })
   })
 
-  document.getElementById('col-search').addEventListener('input', e => {
-    searchQ = e.target.value.toLowerCase()
-    renderCards()
-  })
-
-  // ── Clic Game Changer ────────────────────────────────────
-  container.querySelectorAll('[data-gc-id]').forEach(el => {
-    el.addEventListener('click', () => openGCModal(el.dataset.gcType, openModal))
-  })
-
-  // ── Clic Formation ───────────────────────────────────────
-  container.querySelectorAll('[data-form-id]').forEach(el => {
-    el.addEventListener('click', () => {
-      const card = formCards.find(c => c.id === el.dataset.formId)
-      if (card) openFormationModal(card, formCards, ctx, openModal)
-    })
-  })
+  renderFilters()
+  renderCards()
 }
 
 // ── Modal Game Changer ────────────────────────────────────
