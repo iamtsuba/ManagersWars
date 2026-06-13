@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase.js'
 import { GC_DEFS } from '../match/game-logic.js'
-import { FORMATION_LINKS } from '../match/formation-links.js'
+import { FORMATION_LINKS, FORMATION_POSITIONS } from '../match/formation-links.js'
 
 // ── Constantes ─────────────────────────────────────────────
 const RAR_COLORS  = { normal:'#ccc', pepite:'#D4A017', papyte:'#909090', legende:'#7a28b8' }
@@ -519,127 +519,40 @@ const FORMATION_DIRECT_SELL_PRICE = 1000
 function openFormationModal(card, allFormationCards, ctx, openModal) {
   const { state, toast, closeModal, navigate, refreshProfile } = ctx
   const formation = card.formation
-  const STRUCTS = {
-    '4-4-2': { GK:1, DEF:4, MIL:4, ATT:2 },
-    '4-3-3': { GK:1, DEF:4, MIL:3, ATT:3 },
-    '3-4-3': { GK:1, DEF:3, MIL:4, ATT:3 },
-    '3-5-2': { GK:1, DEF:3, MIL:5, ATT:2 },
-    '5-3-2': { GK:1, DEF:5, MIL:3, ATT:2 },
-  }
   const JC = { GK:'#111', DEF:'#bb2020', MIL:'#D4A017', ATT:'#1A6B3C' }
-  const struct = STRUCTS[formation] || STRUCTS['4-4-2']
-  const LINES = ['ATT','MIL','DEF','GK']
-
-  // Pour N joueurs, retourner les indices de colonne (0=G, 1=C, 2=D)
-  // Positions X par ligne : retourne un tableau de X pour N joueurs, centré dans W
-  // 2 joueurs → côte à côte au centre, pas aux extrêmes
-  function getXPositions(n, W) {
-    const R = 20    // rayon cercle
-    const GAP = 14  // espace mini entre cercles
-    const STEP = R * 2 + GAP  // 54px entre centres
-    const totalWidth = (n - 1) * STEP
-    const startX = (W - totalWidth) / 2
-    return Array.from({ length: n }, (_, i) => startX + i * STEP)
-  }
-
-  // Colonnes logiques (0=G, 1=C, 2=D) pour les liens verticaux
-  function getCols(n) {
-    if (n === 1) return [1]
-    if (n === 2) return [0, 2]
-    if (n === 3) return [0, 1, 2]
-    if (n === 4) return [0, 1, 1, 2]
-    if (n === 5) return [0, 1, 1, 1, 2]
-    return [1]
-  }
 
   function renderGrid() {
-    const W = 290, ROW_H = 72, MARGIN_Y = 24
-    const H = LINES.length * ROW_H + MARGIN_Y * 2
-    const rowY = LINES.map((_, i) => MARGIN_Y + i * ROW_H + ROW_H / 2)
+    const FPOS   = FORMATION_POSITIONS[formation] || {}
+    const FLINKS = FORMATION_LINKS[formation]     || []
 
-    // Calculer les positions X réelles de chaque joueur par ligne
-    const lineXs = {}
-    LINES.forEach(role => {
-      lineXs[role] = getXPositions(struct[role], W)
-    })
+    const W = 290, H = 360
+    const R = 20 // rayon cercle joueur
 
-    // Pour les liens verticaux : mapper colonne logique → X réelle
-    // On prend les positions de chaque colonne (0=premier, 1=milieu, 2=dernier)
-    // et on cherche si la colonne logique existe dans les deux lignes adjacentes
-    function getColX(role, logicalCol) {
-      const n = struct[role]
-      const cols = getCols(n)
-      const xs = lineXs[role]
-      // Trouver le premier joueur ayant cette colonne logique
-      const idx = cols.indexOf(logicalCol)
-      return idx >= 0 ? xs[idx] : null
+    function px(pos) {
+      const p = FPOS[pos]
+      if (!p) return null
+      return { x: p.x * W, y: p.y * H }
     }
 
     let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`
 
-    // ── Liens HORIZONTAUX (joueurs adjacents sur la même ligne) ──
-    LINES.forEach((role, li) => {
-      const xs = lineXs[role]
-      for (let i = 0; i < xs.length - 1; i++) {
-        const x1 = xs[i] + 20, x2 = xs[i+1] - 20
-        const y  = rowY[li]
-        svg += `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}"
-          stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="4,3"/>`
-        svg += `<text x="${(x1+x2)/2}" y="${y-6}" text-anchor="middle"
-          font-size="8" fill="rgba(255,255,255,0.45)">↔</text>`
-      }
-    })
-
-    // ── Liens VERTICAUX (même colonne logique, lignes adjacentes) ──
-    for (let logCol = 0; logCol < 3; logCol++) {
-      for (let li = 0; li < LINES.length - 1; li++) {
-        const role1 = LINES[li], role2 = LINES[li+1]
-        const x1 = getColX(role1, logCol)
-        const x2 = getColX(role2, logCol)
-        if (x1 !== null && x2 !== null) {
-          // Lien vertical centré entre les deux X (peuvent différer si ligne a plus/moins de joueurs)
-          const mx = (x1 + x2) / 2
-          svg += `<line x1="${x1}" y1="${rowY[li]+20}" x2="${x2}" y2="${rowY[li+1]-20}"
-            stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="4,3"/>`
-          svg += `<text x="${mx+6}" y="${(rowY[li]+rowY[li+1])/2+3}"
-            font-size="8" fill="rgba(255,255,255,0.45)">↕</text>`
-        }
-      }
+    // ── Liens (schema neutre, sans joueurs assignes) ──
+    for (const [posA, posB] of FLINKS) {
+      const a = px(posA), b = px(posB)
+      if (!a || !b) continue
+      svg += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+        stroke="rgba(255,255,255,0.35)" stroke-width="2" stroke-dasharray="4,3"/>`
     }
 
-    // ── Cercles de joueurs ──
-    LINES.forEach((role, li) => {
-      const n     = struct[role]
-      const xs    = lineXs[role]
-      const cols  = getCols(n)
-      const color = JC[role]
-      const cy    = rowY[li]
-
-      // Regrouper les joueurs par colonne logique pour afficher ×N si besoin
-      const colGroups = {}
-      cols.forEach((logCol, i) => {
-        if (!colGroups[logCol]) colGroups[logCol] = { xs: [], indices: [] }
-        colGroups[logCol].xs.push(xs[i])
-        colGroups[logCol].indices.push(i)
-      })
-
-      Object.entries(colGroups).forEach(([logCol, group]) => {
-        const cnt = group.xs.length
-        if (cnt > 1) {
-          // Plusieurs joueurs dans la même colonne logique → afficher au centre avec ×N
-          const cx = group.xs.reduce((a,b)=>a+b,0) / cnt
-          svg += `<circle cx="${cx}" cy="${cy}" r="20" fill="${color}" stroke="rgba(255,255,255,0.6)" stroke-width="2"/>`
-          svg += `<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="9" font-weight="900" fill="white" font-family="Arial Black,Arial">${role}</text>`
-          svg += `<text x="${cx}" y="${cy+9}" text-anchor="middle" font-size="8" font-weight="700" fill="rgba(255,255,255,0.85)">×${cnt}</text>`
-        } else {
-          const cx = group.xs[0]
-          const slotNum = group.indices[0] + 1
-          svg += `<circle cx="${cx}" cy="${cy}" r="20" fill="${color}" stroke="rgba(255,255,255,0.6)" stroke-width="2"/>`
-          svg += `<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="9" font-weight="900" fill="white" font-family="Arial Black,Arial">${role}</text>`
-          svg += `<text x="${cx}" y="${cy+30}" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.4)">${role}${slotNum}</text>`
-        }
-      })
-    })
+    // ── Postes ──
+    for (const pos of Object.keys(FPOS)) {
+      const c = px(pos)
+      if (!c) continue
+      const role  = pos.replace(/\d+/, '')
+      const color = JC[role] || '#555'
+      svg += `<circle cx="${c.x}" cy="${c.y}" r="${R}" fill="${color}" stroke="rgba(255,255,255,0.6)" stroke-width="2"/>`
+      svg += `<text x="${c.x}" y="${c.y+4}" text-anchor="middle" font-size="9" font-weight="900" fill="white" font-family="Arial Black,Arial">${role}</text>`
+    }
 
     svg += '</svg>'
     return svg
