@@ -190,7 +190,7 @@ import{s as b}from"./supabase-B22JUf_T.js";function Ie(t,{navigate:e,toast:i}){t
       <div style="text-align:center;padding:12px 0;display:flex;flex-direction:column;gap:8px;align-items:center">
         <button class="btn btn-ghost btn-sm" id="logout-btn" style="color:var(--gray-600)">Déconnexion</button>
         ${a.is_admin?`
-        <a href="/admin.html" class="btn btn-sm" id="admin-editor-btn"
+        <a href="/manager-wars/admin.html" class="btn btn-sm" id="admin-editor-btn"
           style="background:var(--yellow);color:#111;font-weight:700;border:none;text-decoration:none;display:inline-block;padding:6px 16px;border-radius:8px">
           ⚙️ Admin Editor
         </a>`:""}
