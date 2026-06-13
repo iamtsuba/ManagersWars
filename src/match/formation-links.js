@@ -325,6 +325,19 @@ export const FORMATION_LINKS = {
 
 }
 
+// ── Overrides admin (chargés depuis Supabase) ──────────────
+// Permet à l'admin d'activer/désactiver chaque lien possible
+// pour chaque formation via la page Admin > Formations.
+let formationLinksOverrides = {} // { [formation]: [[posA,posB], ...] }
+
+export function setFormationLinksOverrides(overrides) {
+  formationLinksOverrides = overrides || {}
+}
+
+export function getActiveLinks(formation) {
+  return formationLinksOverrides[formation] || FORMATION_LINKS[formation] || []
+}
+
 /**
  * Calcule tous les liens actifs pour un terrain donné.
  * @param {Object} slots      { 'ATT1': player, 'MIL2': player, ... }
@@ -332,7 +345,7 @@ export const FORMATION_LINKS = {
  * @returns {Array}           [{ posA, posB, playerA, playerB, color }]
  */
 export function computeLinks(slots, formation) {
-  const links  = FORMATION_LINKS[formation] || []
+  const links  = getActiveLinks(formation)
   const result = []
 
   for (const [posA, posB] of links) {
@@ -342,6 +355,42 @@ export function computeLinks(slots, formation) {
     result.push({ posA, posB, playerA: pA, playerB: pB, color })
   }
   return result
+}
+
+/**
+ * Génère toutes les paires de postes "candidates" pour une formation,
+ * c'est-à-dire les paires de postes suffisamment proches pour qu'un
+ * lien visuel ait un sens (utilisé par l'éditeur admin), en incluant
+ * systématiquement les liens actifs connus (même si plus éloignés).
+ */
+export function getCandidateLinks(formation, maxDist = 0.4) {
+  const pos = FORMATION_POSITIONS[formation] || {}
+  const keys = Object.keys(pos)
+  const pairSet = new Set()
+  const pairs = []
+
+  function addPair(a, b) {
+    const key = [a, b].sort().join('-')
+    if (pairSet.has(key)) return
+    pairSet.add(key)
+    pairs.push([a, b])
+  }
+
+  // Paires proches géométriquement
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const a = pos[keys[i]], b = pos[keys[j]]
+      const dist = Math.hypot(a.x - b.x, a.y - b.y)
+      if (dist <= maxDist) addPair(keys[i], keys[j])
+    }
+  }
+
+  // Toujours inclure les liens actifs connus, même éloignés
+  for (const [a, b] of (FORMATION_LINKS[formation] || [])) {
+    if (pos[a] && pos[b]) addPair(a, b)
+  }
+
+  return pairs
 }
 
 /**
