@@ -95,6 +95,15 @@ async function openBooster(booster, { state, toast, navigate, container }) {
     await showAdSimulation()
   }
 
+  // Snapshot de la collection AVANT tirage (pour détecter les doublons)
+  const { data: existingCards } = await supabase
+    .from('cards')
+    .select('card_type, player_id, formation')
+    .eq('owner_id', state.profile.id)
+
+  const ownedPlayerIds  = new Set((existingCards||[]).filter(c => c.card_type === 'player').map(c => c.player_id))
+  const ownedFormations = new Set((existingCards||[]).filter(c => c.card_type === 'formation').map(c => c.formation))
+
   let newCards = []
   if (booster.type === 'player') {
     newCards = await openPlayersBooster(state.profile, booster.cardCount, booster.cost)
@@ -103,6 +112,15 @@ async function openBooster(booster, { state, toast, navigate, container }) {
   } else if (booster.type === 'formation') {
     newCards = await openFormationBooster(state.profile, booster.cost)
   }
+
+  // Marquer les doublons (déjà possédés avant ce tirage)
+  newCards.forEach(card => {
+    if (card.card_type === 'player' && card.player) {
+      card.isDuplicate = ownedPlayerIds.has(card.player.id)
+    } else if (card.card_type === 'formation') {
+      card.isDuplicate = ownedFormations.has(card.formation)
+    }
+  })
 
   const { data } = await supabase.from('users').select('*').eq('id', state.profile.id).single()
   if (data) state.profile = data
@@ -349,8 +367,9 @@ function showBoosterAnimation(cards, booster, navigate) {
 
     // Wrapper cliquable
     slot.innerHTML = `
-      <div id="current-card-wrap" class="single-card-reveal" style="cursor:pointer;${isLegend?'filter:drop-shadow(0 0 20px #7a28b8)':''}">
+      <div id="current-card-wrap" class="single-card-reveal" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;${isLegend?'filter:drop-shadow(0 0 20px #7a28b8)':''}">
         ${cardHtml}
+        ${card.isDuplicate ? `<div style="font-size:11px;font-weight:700;color:#fff;background:#cc2222;border-radius:8px;padding:2px 10px">Doublon</div>` : ''}
       </div>`
 
     if (isLegend) {
@@ -387,8 +406,9 @@ function showBoosterAnimation(cards, booster, navigate) {
 
     const grid = document.getElementById('recap-grid')
     grid.innerHTML = cards.map((card, i) => `
-      <div class="recap-card" style="--i:${i};animation-delay:${i*0.07}s">
+      <div class="recap-card" style="--i:${i};animation-delay:${i*0.07}s;display:flex;flex-direction:column;align-items:center;gap:4px">
         ${buildCardFace(card)}
+        ${card.isDuplicate ? `<div style="font-size:11px;font-weight:700;color:#fff;background:#cc2222;border-radius:8px;padding:2px 10px">Doublon</div>` : ''}
       </div>`).join('')
   }
 
