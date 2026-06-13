@@ -6,11 +6,31 @@ import {
 import { FORMATION_LINKS, FORMATION_POSITIONS, linkColor } from './formation-links.js'
 
 const FORMATIONS = {
-  '4-4-2': { GK:1, DEF:4, MIL:4, ATT:2 },
-  '4-3-3': { GK:1, DEF:4, MIL:3, ATT:3 },
-  '3-4-3': { GK:1, DEF:3, MIL:4, ATT:3 },
-  '3-5-2': { GK:1, DEF:3, MIL:5, ATT:2 },
-  '5-3-2': { GK:1, DEF:5, MIL:3, ATT:2 },
+  '4-3-3 (3)': { GK:1, DEF:4, MIL:3, ATT:3 },
+  '5-3-2':     { GK:1, DEF:5, MIL:3, ATT:2 },
+  '4-3-3 (4)': { GK:1, DEF:4, MIL:3, ATT:3 },
+  '4-3-2-1':   { GK:1, DEF:4, MIL:3, ATT:3 },
+  '4-3-3 (2)': { GK:1, DEF:4, MIL:3, ATT:3 },
+  '4-3-3':     { GK:1, DEF:4, MIL:3, ATT:3 },
+  '4-3-3 (5)': { GK:1, DEF:4, MIL:3, ATT:3 },
+  '5-2-2-1':   { GK:1, DEF:5, MIL:2, ATT:3 },
+  '4-3-1-2':   { GK:1, DEF:4, MIL:4, ATT:2 },
+  '5-2-1-2':   { GK:1, DEF:5, MIL:3, ATT:2 },
+  '4-5-1 (2)': { GK:1, DEF:4, MIL:5, ATT:1 },
+  '4-5-1':     { GK:1, DEF:4, MIL:5, ATT:1 },
+  '4-4-2':     { GK:1, DEF:4, MIL:4, ATT:2 },
+  '4-4-2 (2)': { GK:1, DEF:4, MIL:4, ATT:2 },
+  '4-4-1-1':   { GK:1, DEF:4, MIL:4, ATT:2 },
+  '4-1-2-1-2':     { GK:1, DEF:4, MIL:4, ATT:2 },
+  '3-4-1-2':       { GK:1, DEF:3, MIL:5, ATT:2 },
+  '3-4-2-1':       { GK:1, DEF:3, MIL:4, ATT:3 },
+  '3-5-2':         { GK:1, DEF:3, MIL:5, ATT:2 },
+  '4-1-4-1':       { GK:1, DEF:4, MIL:5, ATT:1 },
+  '4-2-2-2':       { GK:1, DEF:4, MIL:4, ATT:2 },
+  '4-2-3-1':       { GK:1, DEF:4, MIL:5, ATT:1 },
+  '4-2-3-1 (2)':   { GK:1, DEF:4, MIL:5, ATT:1 },
+  '3-4-3':         { GK:1, DEF:3, MIL:4, ATT:3 },
+  '4-1-2-1-2 (2)': { GK:1, DEF:4, MIL:4, ATT:2 },
 }
 const JOB_COLORS = { GK:'#111', DEF:'#bb2020', MIL:'#D4A017', ATT:'#1A6B3C' }
 
