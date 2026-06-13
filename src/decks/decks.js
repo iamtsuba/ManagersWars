@@ -286,8 +286,9 @@ function renderDeckField(container, builder, positions, ctx) {
     if (!a || !b) continue
     const pA = slots[posA], pB = slots[posB]
     const lc = linkColor(pA, pB)
-    const opacity = lc === '#ff3333' ? 0.3 : 0.9
-    const glow    = lc !== '#ff3333' ? `filter="url(#glow-${lc.replace('#','')})"`  : ''
+    const opacity = (lc === '#ff3333' || lc === '#cc2222') ? 0.3 : 0.9
+    const hasGlow = lc === '#00ff88' || lc === '#FFD700'
+    const glow    = hasGlow ? `filter="url(#glow-${lc.replace('#','')})"` : ''
     svgContent += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
       stroke="${lc}" stroke-width="${LINK_W}" stroke-linecap="round"
       opacity="${opacity}" ${glow}/>`
