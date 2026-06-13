@@ -168,7 +168,7 @@ export async function renderCollection(container, ctx) {
           </div>`).join('')}
 
         ${formCards.map(c => `
-          <div data-form-id="${c.id}" data-formation="${c.formation}" style="
+          <div data-form-id="${c.id}" style="
             background:linear-gradient(135deg,#1A6B3C,#2a8f52);border:2px solid #2a8f52;
             border-radius:12px;padding:12px;color:#fff;min-width:100px;flex-shrink:0;cursor:pointer;
             display:flex;flex-direction:column;gap:4px;align-items:flex-start">
@@ -270,7 +270,10 @@ export async function renderCollection(container, ctx) {
 
   // ── Clic Formation ───────────────────────────────────────
   container.querySelectorAll('[data-form-id]').forEach(el => {
-    el.addEventListener('click', () => openFormationModal(el.dataset.formation, openModal))
+    el.addEventListener('click', () => {
+      const card = formCards.find(c => c.id === el.dataset.formId)
+      if (card) openFormationModal(card, formCards, ctx, openModal)
+    })
   })
 }
 
@@ -298,7 +301,11 @@ function openGCModal(gcType, openModal) {
 }
 
 // ── Modal Formation avec schéma visuel des liens ──────────
-function openFormationModal(formation, openModal) {
+const FORMATION_DIRECT_SELL_PRICE = 1000
+
+function openFormationModal(card, allFormationCards, ctx, openModal) {
+  const { state, toast, closeModal, navigate, refreshProfile } = ctx
+  const formation = card.formation
   const STRUCTS = {
     '4-4-2': { GK:1, DEF:4, MIL:4, ATT:2 },
     '4-3-3': { GK:1, DEF:4, MIL:3, ATT:3 },
@@ -425,6 +432,11 @@ function openFormationModal(formation, openModal) {
     return svg
   }
 
+  // Cartes de cette même formation (pour vente directe / compteur)
+  const sameFormationCards = allFormationCards.filter(c => c.formation === formation)
+  const count = sameFormationCards.length
+  const canMarket = !card.is_for_sale
+
   openModal(`Formation ${formation}`,
     `<div style="background:linear-gradient(180deg,#1a6b3c,#0a3d1e);border-radius:12px;padding:16px;margin-bottom:14px;overflow-x:auto;text-align:center">
       <div style="font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:1px;margin-bottom:10px">SCHÉMA DES POSTES ET LIENS</div>
@@ -435,9 +447,82 @@ function openFormationModal(formation, openModal) {
       <div style="font-size:12px;color:#333;line-height:1.6">
         Deux joueurs <b>adjacents</b> (↔ horizontal ou ↕ vertical) partageant le même <b>pays</b> ou le même <b>club</b> donnent <b>+1</b> à l'action.
       </div>
-    </div>`,
+    </div>
+
+    <!-- Vente directe -->
+    <div style="margin-top:16px;border-top:1px solid var(--gray-200);padding-top:14px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">💰 Vente directe</div>
+      <div style="background:#f9f9f9;border-radius:10px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;color:var(--gray-600)">Prix fixe carte Formation</div>
+          <div style="font-size:18px;font-weight:900;color:var(--yellow)">${FORMATION_DIRECT_SELL_PRICE.toLocaleString('fr')} crédits</div>
+          <div style="font-size:11px;color:var(--gray-600);margin-top:2px">Il vous restera ×${count-1} carte${count-1>1?'s':''}</div>
+        </div>
+        <button class="btn btn-yellow" id="direct-sell-form-btn" ${count <= 0 ? 'disabled' : ''}>
+          Vendre 1 carte
+        </button>
+      </div>
+    </div>
+
+    <!-- Marché (optionnel) -->
+    ${canMarket ? `
+    <div style="margin-top:12px;border-top:1px solid var(--gray-200);padding-top:12px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">🛒 Marché des transferts</div>
+      <div style="display:flex;gap:8px">
+        <input type="number" id="sell-price-form" min="1" placeholder="Prix en crédits" value="${FORMATION_DIRECT_SELL_PRICE}"
+          style="flex:1;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:14px">
+        <button class="btn btn-primary" id="market-sell-form-btn">Mettre en vente</button>
+      </div>
+    </div>` : ''}
+    ${card.is_for_sale ? `
+    <div style="margin-top:12px;padding:10px;background:#fff8e1;border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:13px;color:#D4A017;font-weight:600">🏷️ En vente : ${(card.sale_price||0).toLocaleString('fr')} cr.</div>
+      <button class="btn btn-ghost btn-sm" id="cancel-sell-form-btn">Retirer</button>
+    </div>` : ''}`,
     `<button class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.add('hidden')">Fermer</button>`
   )
+
+  // Vente directe
+  document.getElementById('direct-sell-form-btn')?.addEventListener('click', async () => {
+    if (!confirm(`Vendre 1 carte Formation ${formation} pour ${FORMATION_DIRECT_SELL_PRICE.toLocaleString('fr')} crédits ? Cette action est irréversible.`)) return
+
+    const cardToSell = sameFormationCards.find(c => !c.is_for_sale) || sameFormationCards[0]
+    if (!cardToSell) { toast('Aucune carte à vendre', 'error'); return }
+
+    const { error } = await supabase.from('cards').delete().eq('id', cardToSell.id)
+    if (error) { toast(error.message, 'error'); return }
+
+    await supabase.from('users')
+      .update({ credits: (state.profile.credits||0) + FORMATION_DIRECT_SELL_PRICE })
+      .eq('id', state.profile.id)
+
+    await refreshProfile()
+    toast(`+${FORMATION_DIRECT_SELL_PRICE.toLocaleString('fr')} crédits ! Carte vendue.`, 'success')
+    closeModal()
+    navigate('collection')
+  })
+
+  // Marché
+  document.getElementById('market-sell-form-btn')?.addEventListener('click', async () => {
+    const price = parseInt(document.getElementById('sell-price-form').value)
+    if (!price || price < 1) { toast('Prix invalide', 'error'); return }
+
+    await supabase.from('cards').update({ is_for_sale: true, sale_price: price }).eq('id', card.id)
+    await supabase.from('market_listings').insert({ seller_id: state.profile.id, card_id: card.id, price })
+
+    toast('Carte mise en vente sur le marché !', 'success')
+    closeModal()
+    navigate('collection')
+  })
+
+  // Retirer du marché
+  document.getElementById('cancel-sell-form-btn')?.addEventListener('click', async () => {
+    await supabase.from('cards').update({ is_for_sale: false, sale_price: null }).eq('id', card.id)
+    await supabase.from('market_listings').update({ status:'cancelled' }).eq('card_id', card.id).eq('status','active')
+    toast('Annonce retirée', 'success')
+    closeModal()
+    navigate('collection')
+  })
 }
 
 // ── Détail carte joueur + vente directe ───────────────────
