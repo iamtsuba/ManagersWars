@@ -83,8 +83,13 @@ export async function renderHome(container, { state, navigate, toast }) {
       </div>` : ''}
 
       <!-- Logout -->
-      <div style="text-align:center;padding:12px 0">
+      <div style="text-align:center;padding:12px 0;display:flex;flex-direction:column;gap:8px;align-items:center">
         <button class="btn btn-ghost btn-sm" id="logout-btn" style="color:var(--gray-600)">Déconnexion</button>
+        ${p.is_admin ? `
+        <a href="/admin.html" class="btn btn-sm" id="admin-editor-btn"
+          style="background:var(--yellow);color:#111;font-weight:700;border:none;text-decoration:none;display:inline-block;padding:6px 16px;border-radius:8px">
+          ⚙️ Admin Editor
+        </a>` : ''}
       </div>
 
     </div>
