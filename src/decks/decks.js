@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase.js'
-import { FORMATION_LINKS, FORMATION_POSITIONS, computeLinks, linkColor } from '../match/formation-links.js'
+import { FORMATION_LINKS, FORMATION_POSITIONS, computeLinks, linkColor, getActiveLinks } from '../match/formation-links.js'
 
 const FORMATIONS = {
   '4-3-3 (3)': { GK:1, DEF:4, MIL:3, ATT:3 },
@@ -243,7 +243,7 @@ function renderDeckField(container, builder, positions, ctx) {
 
   const formation = builder.formation
   const FPOS      = FORMATION_POSITIONS[formation] || {}
-  const FLINKS    = FORMATION_LINKS[formation]     || []
+  const FLINKS    = getActiveLinks ? (getActiveLinks(formation) || FORMATION_LINKS[formation] || []) : (FORMATION_LINKS[formation] || [])
 
   // Build slots map : pos → player
   const slots = {}
