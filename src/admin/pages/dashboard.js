@@ -39,7 +39,7 @@ export async function pageDashboard(container) {
         <div style="font-size:12px;color:var(--gray-600);line-height:1.7">
           <div>Rarités: Normal / Pépite (or) / Papyte (argent) / Légende (violet)</div>
           <div>Postes: GK (noir) / DEF (rouge) / MIL (jaune) / ATT (vert)</div>
-          <div>Formations: 4-4-2, 4-3-3, 3-4-3, 3-5-2, 5-3-2</div>
+          <div>Formations: 25/25 schémas FUT17 (toutes les formations officielles)</div>
           <div>Encodage voyelles: A→E, E→I, I→O, O→U, U→A</div>
         </div>
       </div>
