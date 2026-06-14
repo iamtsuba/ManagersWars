@@ -1,4 +1,4 @@
-import{s as h,F as Y,b as fe,c as be,l as J,d as Ye}from"./formation-links-C7fnTpPl.js";function we(t,{navigate:e,toast:i}){t.innerHTML=`
+import{s as h,F as Y,b as fe,c as be,l as J,d as Ye}from"./formation-links-BD9zicgB.js";function we(t,{navigate:e,toast:i}){t.innerHTML=`
   <div class="auth-screen" style="animation:fadeIn 0.4s ease">
     <div class="auth-box">
       <div class="logo">⚽</div>
