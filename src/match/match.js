@@ -1,9 +1,9 @@
 import { supabase } from '../lib/supabase.js'
 import {
-  GC_DEFS, getNoteForRole, getColsForCount, calcAttack, calcDefense,
+  GC_DEFS, getNoteForRole, calcAttack, calcDefense,
   calcMidfieldDuel, resolveDuel, aiSelectPlayers, getRewards
 } from './game-logic.js'
-import { FORMATION_LINKS, FORMATION_POSITIONS, linkColor } from './formation-links.js'
+import { FORMATION_LINKS, FORMATION_POSITIONS, linkColor, getActiveLinks } from './formation-links.js'
 
 const FORMATIONS = {
   '4-3-3 (3)': { GK:1, DEF:4, MIL:3, ATT:3 },
@@ -84,16 +84,14 @@ function getColsForLine(n) {
   return [1]
 }
 
-// ── Tirage du Boost ───────────────────────────────────────
 function rollBoost() {
   const r = Math.random() * 100
-  if (r < 0.1)  return 4   // 0.1%
-  if (r < 5.0)  return 3   // 4.9%
-  if (r < 20.0) return 2   // 15%
-  return 1                  // 80%
+  if (r < 0.1)  return 4
+  if (r < 5.0)  return 3
+  if (r < 20.0) return 2
+  return 1
 }
 
-// ── Construction d'équipe ─────────────────────────────────
 function buildTeam(starters, formation) {
   const struct = FORMATIONS[formation] || FORMATIONS['4-4-2']
   const lines  = { GK:[], DEF:[], MIL:[], ATT:[] }
@@ -191,22 +189,23 @@ export async function renderMatch(container, ctx) {
   const difficulty = matchMode.replace('vs_ai_','')
   const mode       = matchMode
 
-  // Si pas encore de deck sélectionné → écran de sélection
   if (!params.deckId) {
     return renderDeckSelect(container, ctx, matchMode)
   }
 
   const deckId = params.deckId
 
-  // Charger le deck
-  const { data: deckCards } = await supabase
-    .from('deck_cards')
-    .select(`position, is_starter, slot_order,
-      card:cards(id, card_type, formation,
-        player:players(id,firstname,surname_encoded,country_code,club_id,job,job2,
-          note_g,note_d,note_m,note_a,rarity,skin,hair,hair_length,
-          clubs(encoded_name,logo_url)))`)
-    .eq('deck_id', deckId).order('slot_order')
+  // Charger formation depuis decks table EN PRIORITÉ
+  const [{ data: deckMeta }, { data: deckCards }] = await Promise.all([
+    supabase.from('decks').select('formation,name').eq('id', deckId).single(),
+    supabase.from('deck_cards')
+      .select(`position, is_starter, slot_order,
+        card:cards(id, card_type, formation,
+          player:players(id,firstname,surname_encoded,country_code,club_id,job,job2,
+            note_g,note_d,note_m,note_a,rarity,skin,hair,hair_length,
+            clubs(encoded_name,logo_url)))`)
+      .eq('deck_id', deckId).order('slot_order')
+  ])
 
   const starters = (deckCards||[]).filter(dc => dc.is_starter && dc.card?.player).map(dc => playerFromCard(dc.card))
   const subsRaw  = (deckCards||[]).filter(dc => !dc.is_starter && dc.card?.player).map(dc => playerFromCard(dc.card))
@@ -216,8 +215,9 @@ export async function renderMatch(container, ctx) {
     return
   }
 
+  // Formation : priorité decks.formation, puis formation card, puis défaut
   const formationCard = (deckCards||[]).find(dc => dc.card?.card_type === 'formation')
-  const formation     = formationCard?.card?.formation || '4-4-2'
+  const formation = deckMeta?.formation || formationCard?.card?.formation || '4-4-2'
 
   const { data: gcCards } = await supabase
     .from('cards').select('id,gc_type')
@@ -238,7 +238,7 @@ export async function renderMatch(container, ctx) {
     subsUsed: 0, maxSubs: Math.min(subsRaw.length, 3),
     homeScore:0, aiScore:0,
     gcCards: gcCards||[], usedGc:[],
-    boostCard: null,    // { value: N } si gagné
+    boostCard: null,
     boostUsed: false,
     phase:'midfield',
     attacker:null, round:0,
@@ -247,16 +247,16 @@ export async function renderMatch(container, ctx) {
     clubName: state.profile.club_name || 'Vous',
   }
 
-  // Démarrer avec animation duel milieu
   showMidfieldAnimation(container, game, ctx)
 }
 
-// ── SÉLECTION DU DECK ─────────────────────────────────────
+// ── SÉLECTION DU DECK (refonte) ───────────────────────────
 async function renderDeckSelect(container, ctx, matchMode) {
   const { state, navigate } = ctx
+  container.innerHTML = '<div style="padding:40px;text-align:center;color:#aaa">⚽ Chargement...</div>'
 
   const { data: decks } = await supabase
-    .from('decks').select('id,name,is_active,formation_card_id')
+    .from('decks').select('id,name,is_active,formation')
     .eq('owner_id', state.profile.id).order('created_at', { ascending:false })
 
   if (!decks || decks.length === 0) {
@@ -264,37 +264,90 @@ async function renderDeckSelect(container, ctx, matchMode) {
     return
   }
 
-  container.innerHTML = `
-  <div class="match-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px">
-    <div style="text-align:center;margin-bottom:24px;color:#fff">
-      <div style="font-size:14px;opacity:.6;text-transform:uppercase;letter-spacing:1px">Match vs IA — ${matchMode.replace('vs_ai_','').toUpperCase()}</div>
-      <div style="font-size:22px;font-weight:900;margin-top:6px">Choisis ton deck</div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px">
-      ${decks.map(d => `
-        <div class="deck-select-card" data-deck-id="${d.id}" style="
-          background:rgba(255,255,255,0.08);border:2px solid ${d.is_active?'var(--yellow)':'rgba(255,255,255,0.2)'};
-          border-radius:12px;padding:16px;cursor:pointer;transition:all .15s;color:#fff">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div>
-              <div style="font-weight:700;font-size:15px">${d.name}</div>
-              <div style="font-size:11px;opacity:.6;margin-top:2px">${d.is_active?'Deck actif':'—'}</div>
-            </div>
-            <div style="font-size:24px">→</div>
-          </div>
-        </div>`).join('')}
-    </div>
-    <button class="btn btn-ghost" id="cancel-deck-select" style="margin-top:20px;color:rgba(255,255,255,0.5);border-color:rgba(255,255,255,0.2)">Annuler</button>
-  </div>`
+  const deckIds = decks.map(d => d.id)
+  const { data: allDeckCards } = await supabase
+    .from('deck_cards')
+    .select(`deck_id, position, is_starter, slot_order,
+      card:cards(id,card_type,formation,
+        player:players(id,firstname,surname_encoded,country_code,club_id,job,job2,
+          note_g,note_d,note_m,note_a,rarity,skin,hair,hair_length))`)
+    .in('deck_id', deckIds)
+    .order('slot_order')
 
-  container.querySelectorAll('.deck-select-card').forEach(el => {
-    el.addEventListener('mouseenter', () => el.style.background = 'rgba(255,255,255,0.14)')
-    el.addEventListener('mouseleave', () => el.style.background = 'rgba(255,255,255,0.08)')
-    el.addEventListener('click', () => {
-      ctx.navigate('match', { matchMode, deckId: el.dataset.deckId })
+  let currentIdx = 0
+
+  function renderPreview() {
+    const deck = decks[currentIdx]
+    const cards = (allDeckCards||[]).filter(dc => dc.deck_id === deck.id)
+    const starters = cards.filter(dc => dc.is_starter && dc.card?.player).map(dc => playerFromCard(dc.card))
+    const formationCard = cards.find(dc => dc.card?.card_type === 'formation')
+    const formation = deck.formation || formationCard?.card?.formation || '4-4-2'
+    const team = starters.length >= 11 ? buildTeam(starters, formation) : null
+    const complete = starters.length >= 11
+
+    container.innerHTML = `
+    <div class="match-screen" style="display:flex;flex-direction:column;min-height:100vh;background:#0a3d1e;color:#fff">
+
+      <!-- Header -->
+      <div style="padding:12px 16px;background:rgba(0,0,0,0.4);text-align:center;flex-shrink:0">
+        <div style="font-size:10px;opacity:.6;letter-spacing:2px;text-transform:uppercase">Match vs IA — ${matchMode.replace('vs_ai_','').toUpperCase()}</div>
+        <div style="font-size:18px;font-weight:900;margin-top:2px">Choisis ton deck</div>
+      </div>
+
+      <!-- Navigation deck -->
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 8px;flex-shrink:0">
+        <button id="prev-deck" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,${currentIdx===0?'0.05':'0.15'});border:2px solid rgba(255,255,255,${currentIdx===0?'0.1':'0.3'});color:${currentIdx===0?'rgba(255,255,255,0.2)':'#fff'};font-size:22px;cursor:${currentIdx===0?'default':'pointer'};flex-shrink:0">◀</button>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:20px;font-weight:900">${deck.name}</div>
+          <div style="font-size:11px;opacity:.6;margin-top:2px">${formation} · ${starters.length}/11 ${deck.is_active?'· ⭐ Actif':''}</div>
+        </div>
+        <button id="next-deck" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,${currentIdx===decks.length-1?'0.05':'0.15'});border:2px solid rgba(255,255,255,${currentIdx===decks.length-1?'0.1':'0.3'});color:${currentIdx===decks.length-1?'rgba(255,255,255,0.2)':'#fff'};font-size:22px;cursor:${currentIdx===decks.length-1?'default':'pointer'};flex-shrink:0">▶</button>
+      </div>
+
+      <!-- Terrain preview -->
+      <div style="flex:1;padding:0;overflow:hidden;min-height:0">
+        ${team
+          ? renderTeam(team, formation, null, [])
+          : `<div style="display:flex;align-items:center;justify-content:center;height:100%;opacity:.4;flex-direction:column;gap:8px">
+              <div style="font-size:32px">⚠️</div>
+              <div>Deck incomplet (${starters.length}/11)</div>
+             </div>`
+        }
+      </div>
+
+      <!-- Indicateurs pagination -->
+      ${decks.length > 1 ? `
+      <div style="display:flex;justify-content:center;gap:6px;padding:6px;flex-shrink:0">
+        ${decks.map((_,i)=>`<div style="width:7px;height:7px;border-radius:50%;background:${i===currentIdx?'#FFD700':'rgba(255,255,255,0.25)'}"></div>`).join('')}
+      </div>` : ''}
+
+      <!-- Boutons -->
+      <div style="padding:12px 16px 20px;flex-shrink:0;display:flex;flex-direction:column;gap:8px">
+        <button id="validate-deck" style="width:100%;padding:16px;border-radius:12px;border:none;
+          background:${complete?'var(--green, #1A6B3C)':'rgba(255,255,255,0.1)'};
+          color:${complete?'#fff':'rgba(255,255,255,0.3)'};font-size:16px;font-weight:900;cursor:${complete?'pointer':'default'}">
+          ${complete?'✅ Valider ce deck':'⚠️ Deck incomplet'}
+        </button>
+        <button id="cancel-deck-select" style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:rgba(255,255,255,.5);font-size:14px;cursor:pointer">
+          Annuler
+        </button>
+      </div>
+    </div>`
+
+    document.getElementById('prev-deck')?.addEventListener('click', () => {
+      if (currentIdx > 0) { currentIdx--; renderPreview() }
     })
-  })
-  document.getElementById('cancel-deck-select')?.addEventListener('click', () => navigate('home'))
+    document.getElementById('next-deck')?.addEventListener('click', () => {
+      if (currentIdx < decks.length-1) { currentIdx++; renderPreview() }
+    })
+    document.getElementById('validate-deck')?.addEventListener('click', () => {
+      if (!complete) return
+      ctx.navigate('match', { matchMode, deckId: deck.id })
+    })
+    document.getElementById('cancel-deck-select')?.addEventListener('click', () => navigate('home'))
+  }
+
+  renderPreview()
 }
 
 // ── ANIMATION DUEL MILIEU ─────────────────────────────────
@@ -309,7 +362,7 @@ function showMidfieldAnimation(container, game, ctx) {
     let bonus = 0
     for (let i = 0; i < mils.length-1; i++) {
       const c = linkColor(mils[i], mils[i+1])
-      if (c !== '#333') bonus++
+      if (c !== '#ff3333' && c !== '#cc2222') bonus++
     }
     return bonus
   }
@@ -320,59 +373,58 @@ function showMidfieldAnimation(container, game, ctx) {
 
   function renderMilRow(mils, label, color) {
     return `<div style="text-align:center">
-      <div style="font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:1px;margin-bottom:8px">${label}</div>
+      <div style="font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:2px;margin-bottom:8px;text-transform:uppercase">${label}</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:0">
         ${mils.map((p, i) => {
           const portrait = getPortrait(p)
           const lc = i < mils.length-1 ? linkColor(p, mils[i+1]) : null
+          const hasLink = lc && lc !== '#ff3333' && lc !== '#cc2222'
           return `
           <div style="width:52px;height:52px;border-radius:8px;background:${color};position:relative;flex-shrink:0;overflow:hidden;border:2px solid rgba(255,255,255,0.3)">
             ${portrait?`<img src="${portrait}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.8">`:''}
-            <div style="position:relative;z-index:1;font-size:15px;font-weight:900;color:#fff;text-shadow:0 1px 3px #000">${getNoteForRole(p,'MIL')}</div>
-            <div style="position:relative;z-index:1;font-size:6px;color:#fff;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+            <div style="position:relative;z-index:1;font-size:15px;font-weight:900;color:#fff;text-shadow:0 1px 3px #000;text-align:center;padding-top:4px">${getNoteForRole(p,'MIL')}</div>
+            <div style="position:relative;z-index:1;font-size:6px;color:#fff;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px">${p.name}</div>
           </div>
-          ${lc ? `<div style="width:12px;height:4px;border-radius:2px;background:${lc};flex-shrink:0;opacity:${lc==='#333'?0.3:0.9}"></div>` : ''}
+          ${lc ? `<div style="width:14px;height:4px;border-radius:2px;background:${lc};flex-shrink:0;opacity:${hasLink?0.9:0.3}"></div>` : ''}
           `
         }).join('')}
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:rgba(255,255,255,0.5)">
+        Score: ${milScore(mils)} + ${milLinks(mils)} liens = <b style="color:#fff">${milScore(mils)+milLinks(mils)}</b>
       </div>
     </div>`
   }
 
   container.innerHTML = `
-  <div class="match-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:20px;padding:20px">
+  <div class="match-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:24px;padding:24px;background:#0a3d1e">
     <div style="text-align:center;color:#fff">
-      <div style="font-size:12px;opacity:.5;letter-spacing:1px">DUEL DU MILIEU DE TERRAIN</div>
+      <div style="font-size:11px;opacity:.5;letter-spacing:2px;text-transform:uppercase">Duel du milieu de terrain</div>
     </div>
 
-    ${renderMilRow(homeMils, game.clubName.toUpperCase(), '#D4A017')}
+    ${renderMilRow(homeMils, game.clubName, '#D4A017')}
 
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      <div id="score-home" style="font-size:42px;font-weight:900;color:#D4A017;transition:all 0.5s">${homeTotal}</div>
-      <div style="font-size:14px;color:rgba(255,255,255,0.4)">VS</div>
-      <div id="score-ai" style="font-size:42px;font-weight:900;color:rgba(255,255,255,0.7);transition:all 0.5s">${aiTotal}</div>
+      <div id="score-home" style="font-size:48px;font-weight:900;color:#D4A017;transition:all 0.6s ease">${homeTotal}</div>
+      <div style="font-size:14px;color:rgba(255,255,255,0.4);letter-spacing:2px">VS</div>
+      <div id="score-ai" style="font-size:48px;font-weight:900;color:rgba(255,255,255,0.7);transition:all 0.6s ease">${aiTotal}</div>
     </div>
 
     ${renderMilRow(aiMils, 'IA', '#bb2020')}
 
-    <div id="midfield-result" style="opacity:0;text-align:center;transition:opacity 0.5s;color:#fff">
-      <div style="font-size:18px;font-weight:900"></div>
-    </div>
+    <div id="midfield-result" style="opacity:0;text-align:center;transition:opacity 0.5s;color:#fff;max-width:320px"></div>
   </div>`
 
-  // Animation : la note gagnante grossit
   setTimeout(() => {
     const elHome = document.getElementById('score-home')
     const elAi   = document.getElementById('score-ai')
     const elRes  = document.getElementById('midfield-result')
     if (elHome && elAi) {
       if (homeWins) {
-        elHome.style.fontSize = '72px'
-        elHome.style.color = '#fff'
-        elAi.style.opacity = '0.3'
+        elHome.style.fontSize = '80px'; elHome.style.color = '#FFD700'
+        elAi.style.opacity = '0.25'
       } else {
-        elAi.style.fontSize = '72px'
-        elAi.style.color = '#fff'
-        elHome.style.opacity = '0.3'
+        elAi.style.fontSize = '80px'; elAi.style.color = '#ff6b6b'
+        elHome.style.opacity = '0.25'
       }
     }
     if (elRes) {
@@ -380,21 +432,21 @@ function showMidfieldAnimation(container, game, ctx) {
       elRes.style.opacity = '1'
       const winner = homeWins ? game.clubName : 'IA'
       elRes.innerHTML = `
-        <div style="font-size:18px;font-weight:900;margin-bottom:8px">
-          ⚽ ${winner} remporte le milieu !
+        <div style="font-size:20px;font-weight:900;margin-bottom:10px">
+          ⚽ ${homeWins ? `${game.clubName} gagne le milieu de terrain et attaque !` : `L'IA gagne l'engagement et attaque !`}
         </div>
         ${homeWins ? `
-        <div style="background:rgba(135,206,235,0.2);border:2px solid #87CEEB;border-radius:12px;padding:12px 20px;margin-top:8px;display:inline-block">
-          <div style="font-size:11px;color:#87CEEB;letter-spacing:1px">CARTE BOOST OBTENUE</div>
-          <div style="font-size:28px;font-weight:900;color:#87CEEB">+${boostValue}</div>
-          <div style="font-size:11px;color:rgba(135,206,235,0.7)">Applicable sur n'importe quel joueur</div>
+        <div style="background:rgba(135,206,235,0.15);border:2px solid #87CEEB;border-radius:14px;padding:14px 24px;display:inline-block;margin-top:4px">
+          <div style="font-size:10px;color:#87CEEB;letter-spacing:1px">CARTE BOOST OBTENUE</div>
+          <div style="font-size:32px;font-weight:900;color:#87CEEB">+${boostValue}</div>
+          <div style="font-size:10px;color:rgba(135,206,235,0.7)">Applicable sur n'importe quel joueur</div>
         </div>` : ''}
       `
       if (homeWins) game.boostCard = { value: boostValue }
     }
 
     game.attacker = homeWins ? 'home' : 'ai'
-    game.log.push({ text:`Duel milieu : ${game.clubName} ${homeTotal} – ${aiTotal} IA → ${homeWins ? game.clubName : 'IA'} attaque en premier`, type:'info' })
+    game.log.push({ text:`Duel milieu : ${game.clubName} ${homeTotal} – ${aiTotal} IA → ${homeWins ? game.clubName+' attaque' : 'IA attaque'}`, type:'info' })
 
     setTimeout(() => {
       game.phase = game.attacker === 'home' ? 'attack' : 'ai-attack'
@@ -404,13 +456,12 @@ function showMidfieldAnimation(container, game, ctx) {
   }, 1200)
 }
 
-// ── TERRAIN DU MATCH (SVG pur avec liens formation) ──────
+// ── TERRAIN SVG (liens : double ligne, pas de filter url) ─
 function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
   const FPOS   = FORMATION_POSITIONS[formation] || {}
-  const FLINKS = FORMATION_LINKS[formation]     || []
+  const FLINKS = getActiveLinks(formation) || FORMATION_LINKS[formation] || []
   const R      = 26
 
-  // Construire slots map positionnel : pos → player
   const slots = {}
   const LINES = ['ATT','MIL','DEF','GK']
   for (const role of LINES) {
@@ -424,16 +475,22 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
 
   let svg = ''
 
-  // 1. Liens
+  // 1. Liens (double ligne, sans filter url pour éviter bug SPA Chrome)
   for (const [posA, posB] of FLINKS) {
     const a = px(posA), b = px(posB)
     if (!a || !b) continue
     const pA = slots[posA], pB = slots[posB]
     const lc = linkColor(pA, pB)
-    const op = lc === '#ff3333' ? 0.25 : 0.9
-    const fw = lc !== '#ff3333' ? `filter="url(#glow${lc.replace('#','').slice(0,6)})"` : ''
-    svg += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"
-      stroke="${lc}" stroke-width="3.5" stroke-linecap="round" opacity="${op}" ${fw}/>`
+    const hasGlow = lc === '#00ff88' || lc === '#FFD700'
+    if (hasGlow) {
+      svg += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"
+        stroke="${lc}" stroke-width="10" stroke-linecap="round" opacity="0.22"/>`
+      svg += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"
+        stroke="${lc}" stroke-width="3.5" stroke-linecap="round" opacity="0.95"/>`
+    } else {
+      svg += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"
+        stroke="${lc}" stroke-width="3.5" stroke-linecap="round" opacity="0.7"/>`
+    }
   }
 
   // 2. Joueurs
@@ -441,8 +498,7 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
     const c = px(pos)
     if (!c) continue
     const role = pos.replace(/[0-9]/g,'')
-    const JC   = {GK:'#111',DEF:'#bb2020',MIL:'#D4A017',ATT:'#1A6B3C'}
-    const bg   = JC[role] || '#555'
+    const bg   = JOB_COLORS[role] || '#555'
 
     const selectable = (phase==='attack' && ['MIL','ATT'].includes(role) && !p.used)
                     || (phase==='defense' && ['GK','DEF','MIL'].includes(role) && !p.used)
@@ -452,14 +508,13 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
     if      (phase==='attack')  note = role==='MIL'?Number(p.note_m)||0 : Number(p.note_a)||0
     else if (phase==='defense') note = role==='GK'?Number(p.note_g)||0 : role==='MIL'?Number(p.note_m)||0 : Number(p.note_d)||0
     else                        note = Number(role==='GK'?p.note_g : role==='DEF'?p.note_d : role==='MIL'?p.note_m : p.note_a)||0
-    note = (note + (p.boost||0))
+    note = note + (p.boost||0)
 
     const borderColor = isSelected ? '#FFD700' : selectable ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)'
     const borderWidth = isSelected ? 3 : 2
-    const fillOpacity = p.used ? 0.25 : 1
+    const fillOpacity = p.used ? 0.2 : 1
 
     const portrait = getPortrait(p)
-
     if (portrait) {
       svg += `<defs><clipPath id="mc-${pos}"><circle cx="${c.x}" cy="${c.y}" r="${R}"/></clipPath></defs>`
     }
@@ -470,7 +525,7 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
     if (portrait && !p.used) {
       svg += `<image href="${portrait}" x="${c.x-R}" y="${c.y-R}" width="${R*2}" height="${R*2}"
         clip-path="url(#mc-${pos})" preserveAspectRatio="xMidYMid slice" opacity="0.8"/>`
-      svg += `<circle cx="${c.x}" cy="${c.y}" r="${R}" fill="${bg}" opacity="0.35"
+      svg += `<circle cx="${c.x}" cy="${c.y}" r="${R}" fill="${bg}" opacity="0.3"
         stroke="${borderColor}" stroke-width="${borderWidth}"/>`
     }
 
@@ -480,8 +535,8 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
     }
 
     svg += `<text x="${c.x}" y="${c.y-1}" text-anchor="middle" font-size="12" font-weight="900"
-      fill="${p.used?'#555':'white'}" font-family="Arial Black,Arial">${p.used?'–':note}</text>
-    <text x="${c.x}" y="${c.y+11}" text-anchor="middle" font-size="6" fill="rgba(255,255,255,${p.used?0.3:0.8})"
+      fill="${p.used?'rgba(255,255,255,0.2)':'white'}" font-family="Arial Black,Arial">${p.used?'–':note}</text>
+    <text x="${c.x}" y="${c.y+11}" text-anchor="middle" font-size="6" fill="rgba(255,255,255,${p.used?0.2:0.8})"
       font-family="Arial">${(p.name||'').slice(0,8)}</text>`
 
     if (selectable) {
@@ -491,13 +546,8 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
     }
   }
 
-  const glowDefs = `<defs>
-    <filter id="glow00ff88"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <filter id="glowFFD700"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  </defs>`
-
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:360px;margin:0 auto">
-    ${glowDefs}${svg}
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:380px;margin:0 auto">
+    ${svg}
   </svg>`
 }
 
@@ -507,146 +557,190 @@ function renderTeam(team, formation, phase, selectedIds) {
   </div>`
 }
 
-
-// ── RENDU PRINCIPAL DU MATCH ──────────────────────────────
+// ── RENDU PRINCIPAL DU MATCH (layout mobile refonte) ──────
 function renderGame(container, game, ctx) {
-  const phaseLabel = {
-    'attack':    '⚔️ Choisissez vos attaquants',
-    'defense':   '🛡️ Choisissez vos défenseurs',
-    'ai-attack': '🤖 L\'IA attaque...',
-    'ai-defense':'🤖 L\'IA défend...',
-    'finished':  '🏁 Match terminé',
-  }[game.phase] || ''
-
   const selectedIds = game.selected.map(s => s.cardId)
-
-  // Remplaçants disponibles (non encore utilisés comme remplacement)
-  const usedSubIds = game.usedSubIds || []
-  const availSubs  = game.homeSubs.filter(s => !usedSubIds.includes(s.cardId))
-
-  // Joueurs grisés (utilisés) dans l'équipe
+  const usedSubIds  = game.usedSubIds || []
+  const availSubs   = game.homeSubs.filter(s => !usedSubIds.includes(s.cardId))
   const grayedPlayers = Object.values(game.homeTeam).flat().filter(p => p.used)
+  const canSub = grayedPlayers.length > 0 && availSubs.length > 0 && game.subsUsed < game.maxSubs
+
+  // Dernière action
+  const lastLog  = game.log[game.log.length - 1]
+  const isAITurn = game.phase === 'ai-attack' || game.phase === 'ai-defense'
+  const isAttack = game.phase === 'attack'
+  const isDefense = game.phase === 'defense'
+  const isFinished = game.phase === 'finished'
+
+  // GC disponibles
+  const activeGCs = game.gcCards.filter(gc => !game.usedGc.includes(gc.id))
+  const boostAvail = game.boostCard && !game.boostUsed
 
   container.innerHTML = `
-  <div class="match-screen">
-    <div class="match-header">
-      <button class="btn-icon" id="match-quit" style="color:#fff;padding:4px 8px">✕</button>
-      <div style="flex:1;text-align:center">
-        <div style="font-size:10px;color:rgba(255,255,255,0.6)">${game.clubName} vs IA (${game.difficulty.toUpperCase()})</div>
-        <div class="match-score">${game.homeScore} – ${game.aiScore}</div>
+  <style>
+    @keyframes subSlideOut { from{transform:translateX(0);opacity:1} to{transform:translateX(-120%);opacity:0} }
+    @keyframes subSlideIn  { from{transform:translateX(120%);opacity:0} to{transform:translateX(0);opacity:1} }
+    @keyframes subFadeIn   { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+    .sub-anim-out { animation: subSlideOut 0.45s ease forwards; }
+    .sub-anim-in  { animation: subSlideIn 0.45s ease 0.35s forwards; opacity:0; }
+    #match-history-panel {
+      position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:500;
+      display:flex;flex-direction:column;
+      transform:translateY(100%);transition:transform 0.3s ease;
+    }
+    #match-history-panel.open { transform:translateY(0); }
+  </style>
+
+  <div class="match-screen" style="display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#0a3d1e;position:relative">
+
+    <!-- SCORE BAR -->
+    <div style="display:flex;align-items:center;padding:8px 10px;background:rgba(0,0,0,0.5);gap:6px;flex-shrink:0">
+      <button id="match-quit" style="width:34px;height:34px;border-radius:50%;background:rgba(220,50,50,0.7);border:none;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0">✕</button>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:13px;font-weight:700;color:rgba(255,255,255,0.9);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${game.clubName}</span>
+        <span style="font-size:26px;font-weight:900;color:#FFD700;letter-spacing:2px">${game.homeScore} – ${game.aiScore}</span>
+        <span style="font-size:12px;color:rgba(255,255,255,0.5)">IA (${game.difficulty.toUpperCase()})</span>
       </div>
-      <button class="btn-icon" id="view-ai" style="color:#fff;padding:4px 8px">👁️</button>
+      <button id="view-ai" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:16px;cursor:pointer;flex-shrink:0">👁</button>
     </div>
 
-    <div class="match-phase">${phaseLabel}</div>
-
-    <!-- Terrain -->
-    <div class="match-field" id="match-field" style="position:relative">
-      ${renderTeam(game.homeTeam, game.formation, game.phase, selectedIds)}
+    <!-- DERNIÈRE ACTION -->
+    <div id="last-action-zone" style="padding:6px 10px;background:rgba(0,0,0,0.25);min-height:40px;flex-shrink:0;display:flex;align-items:center">
+      ${lastLog
+        ? `<span style="font-size:12px;color:${lastLog.type==='goal'?'#FFD700':'rgba(255,255,255,0.8)'};font-weight:${lastLog.type==='goal'?'900':'400'}">${lastLog.text}</span>`
+        : `<span style="font-size:11px;color:rgba(255,255,255,0.3)">En attente du premier action...</span>`
+      }
+      ${game.phase === 'defense' && game.pendingAttack
+        ? `<span style="margin-left:8px;background:rgba(255,80,80,0.2);border:1px solid #ff6b6b;border-radius:6px;padding:2px 7px;font-size:11px;color:#ff6b6b;font-weight:700">IA attaque ${game.pendingAttack.total}</span>`
+        : ''}
     </div>
 
-    <!-- Barre d'outils : GC + Boost + Remplacements -->
-    <div style="padding:6px 12px;display:flex;gap:6px;overflow-x:auto;align-items:center;background:rgba(0,0,0,0.2)">
+    <!-- BOUTON HISTORIQUE -->
+    <button id="toggle-history" style="width:100%;padding:4px 10px;background:rgba(0,0,0,0.15);border:none;border-bottom:1px solid rgba(255,255,255,0.05);color:rgba(255,255,255,0.35);font-size:10px;cursor:pointer;letter-spacing:1px;flex-shrink:0">
+      ▼  VOIR L'HISTORIQUE (${game.log.length})
+    </button>
 
-      <!-- Game Changers -->
-      ${game.gcCards.filter(gc=>!game.usedGc.includes(gc.id)).map(gc=>`
-        <div class="gc-mini" data-gc-id="${gc.id}" data-gc-type="${gc.gc_type}"
-          style="flex-shrink:0;background:linear-gradient(135deg,#3d0a7a,#7a28b8);border:1px solid #9b59b6;border-radius:8px;padding:4px 8px;cursor:pointer;text-align:center;min-width:72px">
-          <div style="font-size:14px">${GC_DEFS[gc.gc_type]?.icon||'⚡'}</div>
-          <div style="font-size:7px;color:#fff;font-weight:600">${gc.gc_type}</div>
-        </div>`).join('')}
+    <!-- ZONE CENTRALE : REMPLAÇANTS + TERRAIN -->
+    <div style="display:flex;flex:1;min-height:0;overflow:hidden">
 
-      <!-- Boost -->
-      ${game.boostCard && !game.boostUsed ? `
-        <div id="boost-card" style="flex-shrink:0;background:linear-gradient(135deg,#4a9fc4,#87CEEB);
-          border:2px solid #87CEEB;border-radius:8px;padding:4px 8px;cursor:pointer;text-align:center;min-width:72px">
-          <div style="font-size:14px">⚡</div>
-          <div style="font-size:9px;color:#000;font-weight:900">BOOST +${game.boostCard.value}</div>
-          <div style="font-size:6px;color:rgba(0,0,0,0.7)">1 joueur</div>
+      <!-- Colonne remplaçants -->
+      <div style="display:flex;flex-direction:column;gap:5px;padding:6px 3px;width:42px;align-items:center;overflow-y:auto;flex-shrink:0;background:rgba(0,0,0,0.15)">
+        ${availSubs.length === 0
+          ? `<div style="font-size:8px;color:rgba(255,255,255,0.25);text-align:center;margin-top:6px;line-height:1.4">Pas de<br>rempl.</div>`
+          : availSubs.map(s => {
+              const portrait = getPortrait(s)
+              const jobColor = JOB_COLORS[s.job] || '#555'
+              return `
+              <div class="sub-btn-col" data-sub-id="${s.cardId}" title="${s.firstname} ${s.name}"
+                style="width:34px;height:34px;border-radius:50%;background:${jobColor};border:2px solid rgba(255,255,255,0.4);cursor:pointer;position:relative;overflow:hidden;flex-shrink:0">
+                ${portrait ? `<img src="${portrait}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.85">` : ''}
+                <div style="position:absolute;bottom:0;left:0;right:0;font-size:6px;text-align:center;color:#fff;background:rgba(0,0,0,0.5);font-weight:700">${s.job}</div>
+              </div>`
+            }).join('')
+        }
+        ${canSub ? `
+        <div id="sub-btn-main" style="margin-top:4px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.1);border:1.5px dashed rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:rgba(255,255,255,0.5)">🔄</div>
+        ` : ''}
+      </div>
+
+      <!-- Terrain -->
+      <div style="flex:1;overflow:hidden;min-width:0" id="match-field">
+        ${renderTeam(game.homeTeam, game.formation, game.phase, selectedIds)}
+      </div>
+    </div>
+
+    <!-- ZONE BAS : GC + BOUTON ACTION -->
+    <div style="display:flex;align-items:flex-end;padding:6px 8px;background:rgba(0,0,0,0.35);gap:8px;flex-shrink:0;min-height:80px">
+
+      <!-- Grille GC -->
+      <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:3px;align-content:start">
+        ${activeGCs.map(gc => `
+          <div class="gc-mini" data-gc-id="${gc.id}" data-gc-type="${gc.gc_type}"
+            style="background:linear-gradient(135deg,#3d0a7a,#7a28b8);border:1px solid #9b59b6;border-radius:7px;padding:3px 2px;cursor:pointer;text-align:center">
+            <div style="font-size:16px">${GC_DEFS[gc.gc_type]?.icon||'⚡'}</div>
+            <div style="font-size:6px;color:#fff;font-weight:600;line-height:1.2">${gc.gc_type.slice(0,8)}</div>
+          </div>`).join('')}
+        ${boostAvail ? `
+          <div id="boost-card" style="background:linear-gradient(135deg,#4a9fc4,#87CEEB);border:2px solid #87CEEB;border-radius:7px;padding:3px 2px;cursor:pointer;text-align:center">
+            <div style="font-size:16px">⚡</div>
+            <div style="font-size:6px;color:#000;font-weight:900">+${game.boostCard.value}</div>
+          </div>` : ''}
+      </div>
+
+      <!-- Bouton action principal -->
+      <div style="flex-shrink:0">
+        ${isFinished
+          ? `<button id="btn-results" style="width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#D4A017,#FFD700);border:3px solid #FFD700;color:#000;font-size:28px;cursor:pointer;display:flex;align-items:center;justify-content:center">🏁</button>`
+          : isAITurn
+          ? `<div style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.08);border:3px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.3);font-size:26px;display:flex;align-items:center;justify-content:center">⏳</div>`
+          : isAttack
+          ? `<button id="btn-action" style="width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#c47a00,#FFD700);border:3px solid #FFD700;color:#fff;font-size:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(255,215,0,0.4)" ${game.selected.length===0?'disabled style="opacity:0.4;cursor:default"':''}>⚔️</button>`
+          : isDefense
+          ? `<button id="btn-action" style="width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#1a4a8a,#3a7bd5);border:3px solid #87CEEB;color:#fff;font-size:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(135,206,235,0.4)" ${game.selected.length===0?'disabled style="opacity:0.4;cursor:default"':''}>🛡️</button>`
+          : `<div style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.05);border:3px solid rgba(255,255,255,0.1)"></div>`
+        }
+        ${isAttack || isDefense ? `
+        <div style="text-align:center;font-size:8px;color:rgba(255,255,255,0.4);margin-top:3px">
+          ${game.selected.length}/3
         </div>` : ''}
-
-      <!-- Remplacements -->
-      ${grayedPlayers.length > 0 && availSubs.length > 0 && game.subsUsed < game.maxSubs ? `
-        <div id="sub-btn" style="flex-shrink:0;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.3);
-          border-radius:8px;padding:4px 8px;cursor:pointer;text-align:center;min-width:72px">
-          <div style="font-size:14px">🔄</div>
-          <div style="font-size:7px;color:#fff">Remplaçant</div>
-          <div style="font-size:6px;color:rgba(255,255,255,0.5)">(${game.subsUsed}/${game.maxSubs})</div>
-        </div>` : ''}
+      </div>
     </div>
+  </div>
 
-    <!-- Actions -->
-    <div class="match-actions" id="match-actions"></div>
-
-    <!-- Log -->
-    <div class="match-log" id="match-log">
-      ${game.log.slice(-6).map(e=>`<div class="log-entry ${e.type==='goal'?'log-goal':''}">${e.text}</div>`).join('')}
+  <!-- PANNEAU HISTORIQUE (slide-up) -->
+  <div id="match-history-panel">
+    <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.1)">
+      <div style="flex:1;font-size:14px;font-weight:700;color:#fff">📋 Historique du match</div>
+      <button id="close-history" style="background:none;border:none;color:rgba(255,255,255,0.6);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:6px">
+      ${game.log.length === 0
+        ? `<div style="text-align:center;padding:40px;color:rgba(255,255,255,0.3)">Aucune action pour l'instant</div>`
+        : [...game.log].reverse().map((e,i) => `
+          <div style="padding:8px 10px;border-radius:8px;background:${e.type==='goal'?'rgba(212,160,23,0.15)':'rgba(255,255,255,0.05)'};border-left:3px solid ${e.type==='goal'?'#FFD700':'rgba(255,255,255,0.15)'}">
+            <span style="font-size:12px;color:${e.type==='goal'?'#FFD700':'rgba(255,255,255,0.8)'};font-weight:${e.type==='goal'?700:400}">${e.text}</span>
+          </div>`).join('')
+      }
     </div>
   </div>`
 
-  // Events
+  // ── Events ────────────────────────────────────────────────
   document.getElementById('match-quit')?.addEventListener('click', () => {
-    if (confirm('Abandonner le match ?')) ctx.navigate('home')
+    if (confirm('Abandonner ? Résultat : défaite 3-0')) {
+      game.homeScore = 0; game.aiScore = 3
+      finishMatch(container, game, ctx)
+    }
   })
   document.getElementById('view-ai')?.addEventListener('click', () => showAITeam(game, ctx))
 
-  renderMatchActions(container, game, ctx)
+  document.getElementById('toggle-history')?.addEventListener('click', () => {
+    document.getElementById('match-history-panel')?.classList.add('open')
+  })
+  document.getElementById('close-history')?.addEventListener('click', () => {
+    document.getElementById('match-history-panel')?.classList.remove('open')
+  })
+
+  document.getElementById('btn-action')?.addEventListener('click', () => {
+    if (game.selected.length === 0) return
+    if (isAttack) confirmAttack(container, game, ctx)
+    else if (isDefense) confirmDefense(container, game, ctx)
+  })
+
+  document.getElementById('btn-results')?.addEventListener('click', () => finishMatch(container, game, ctx))
 
   container.querySelectorAll('.match-slot-hit').forEach(el => {
     el.addEventListener('click', () => toggleSelect(el, game, container, ctx))
   })
-
   container.querySelectorAll('.gc-mini').forEach(el => {
     el.addEventListener('click', () => useGameChanger(el.dataset.gcId, el.dataset.gcType, container, game, ctx))
   })
+  document.getElementById('boost-card')?.addEventListener('click', () => useBoost(container, game, ctx))
 
-  document.getElementById('boost-card')?.addEventListener('click', () => {
-    useBoost(container, game, ctx)
+  // Subs : clic sur portrait dans colonne
+  container.querySelectorAll('.sub-btn-col').forEach(el => {
+    el.addEventListener('click', () => openSubstitution(container, game, ctx, el.dataset.subId))
   })
-
-  document.getElementById('sub-btn')?.addEventListener('click', () => {
-    openSubstitution(container, game, ctx)
-  })
-
-  const log = document.getElementById('match-log')
-  if (log) log.scrollTop = log.scrollHeight
-}
-
-// ── ACTIONS ───────────────────────────────────────────────
-function renderMatchActions(container, game, ctx) {
-  const actions = document.getElementById('match-actions')
-  if (!actions) return
-
-  if (game.phase === 'attack') {
-    const calc = game.selected.length > 0 ? calcAttack(game.selected.map(s=>({...s,_line:s._role})), game.modifiers.home) : null
-    actions.innerHTML = `
-      <div style="text-align:center;color:#fff;margin-bottom:6px;font-size:13px">
-        ${calc
-          ? `ATT : <b style="color:var(--yellow);font-size:20px">${calc.total}</b>
-             <span style="font-size:11px;opacity:.7">(${calc.base}${calc.links?` +${calc.links} liens`:''}${game.modifiers.home.doubleAttack?' ×2':''})</span>`
-          : '<span style="opacity:.5">Sélectionne 1–3 milieux/attaquants</span>'}
-      </div>
-      <button class="btn btn-primary" id="confirm-attack" style="width:100%" ${!calc?'disabled':''}>Attaquer →</button>`
-    document.getElementById('confirm-attack')?.addEventListener('click', () => confirmAttack(container, game, ctx))
-
-  } else if (game.phase === 'defense') {
-    const calc = game.selected.length > 0 ? calcDefense(game.selected.map(s=>({...s,_line:s._role})), game.modifiers.home) : null
-    actions.innerHTML = `
-      <div style="text-align:center;color:#fff;margin-bottom:6px;font-size:13px">
-        <div style="font-size:11px;opacity:.6;margin-bottom:2px">L'IA attaque avec <b style="color:#ff6b6b">${game.pendingAttack?.total||0}</b></div>
-        ${calc
-          ? `DEF : <b style="color:var(--yellow);font-size:20px">${calc.total}</b>`
-          : '<span style="opacity:.5">Sélectionne 1–3 défenseurs/GK</span>'}
-      </div>
-      <button class="btn btn-primary" id="confirm-defense" style="width:100%" ${!calc?'disabled':''}>Défendre →</button>`
-    document.getElementById('confirm-defense')?.addEventListener('click', () => confirmDefense(container, game, ctx))
-
-  } else if (game.phase === 'finished') {
-    actions.innerHTML = `<button class="btn btn-primary" id="end-match" style="width:100%">Voir les résultats</button>`
-    document.getElementById('end-match')?.addEventListener('click', () => ctx.navigate('home'))
-  } else {
-    actions.innerHTML = `<div style="text-align:center;color:rgba(255,255,255,.4);padding:8px;font-size:12px">⏳ Tour de l'IA...</div>`
-  }
+  document.getElementById('sub-btn-main')?.addEventListener('click', () => openSubstitution(container, game, ctx))
 }
 
 // ── SÉLECTION ─────────────────────────────────────────────
@@ -673,7 +767,7 @@ function confirmAttack(container, game, ctx) {
     const p = (game.homeTeam[sel._role]||[]).find(pp => pp.cardId === sel.cardId)
     if (p) p.used = true
   })
-  game.log.push({ text:`Vous attaquez : ${calc.total} (${game.selected.map(p=>p.name).join(', ')})`, type:'info' })
+  game.log.push({ text:`⚔️ Vous attaquez : ${calc.total} (base ${calc.base}${calc.links?` +${calc.links} liens`:''}) — ${game.selected.map(p=>p.name).join(', ')}`, type:'info' })
   game.selected = []
   game.modifiers.home = {}
   game.phase = 'ai-defense'
@@ -696,7 +790,7 @@ function confirmDefense(container, game, ctx) {
     game.aiScore++
     game.log.push({ text:`⚽ BUT IA ! (${game.pendingAttack.total} > ${calc.total})`, type:'goal' })
   } else {
-    game.log.push({ text:`🧤 Défense ! (${calc.total} ≥ ${game.pendingAttack.total})`, type:'info' })
+    game.log.push({ text:`🧤 Défense réussie ! (${calc.total} ≥ ${game.pendingAttack.total})`, type:'info' })
   }
   game.selected = []
   game.modifiers.home = {}
@@ -712,7 +806,7 @@ function aiTurn(container, game, ctx) {
   const calc = calcAttack(selected, game.modifiers.ai)
   game.pendingAttack = { ...calc, players:selected, side:'ai' }
   selected.forEach(s => { s.used = true })
-  game.log.push({ text:`IA attaque : ${calc.total}`, type:'info' })
+  game.log.push({ text:`🤖 IA attaque : ${calc.total} (${selected.map(p=>p.name).join(', ')})`, type:'info' })
   game.modifiers.ai = {}
   game.phase = 'defense'
   renderGame(container, game, ctx)
@@ -728,7 +822,7 @@ function aiDefend(container, game, ctx) {
     game.log.push({ text:`🛡️ Bouclier IA !`, type:'info' })
   } else if (result.goal) {
     game.homeScore++
-    game.log.push({ text:`⚽ BUT ! (${game.pendingAttack.total} > ${defVal})`, type:'goal' })
+    game.log.push({ text:`⚽ BUT ! (${game.pendingAttack.total} > ${defVal}) — ${game.selected?.map(p=>p.name).join(', ')||''}`, type:'goal' })
   } else {
     game.log.push({ text:`🧤 IA défend (${defVal} ≥ ${game.pendingAttack.total})`, type:'info' })
   }
@@ -773,6 +867,158 @@ function checkEnd(container, game, ctx) {
   else { game.phase = 'attack'; renderGame(container, game, ctx) }
 }
 
+// ── ANIMATION REMPLACEMENT ────────────────────────────────
+function showSubAnimation(outPlayer, inPlayer, callback) {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:800;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+    animation:subFadeIn 0.2s ease;
+  `
+  const outPortrait  = getPortrait(outPlayer)
+  const inPortrait   = getPortrait(inPlayer)
+  const outColor     = JOB_COLORS[outPlayer.job] || '#555'
+  const inColor      = JOB_COLORS[inPlayer.job]  || '#555'
+
+  overlay.innerHTML = `
+    <style>@keyframes subFadeIn{from{opacity:0}to{opacity:1}}</style>
+    <div style="font-size:13px;letter-spacing:3px;color:rgba(255,255,255,0.5);text-transform:uppercase">Remplacement</div>
+    <div style="display:flex;align-items:center;gap:24px">
+      <!-- Sortant -->
+      <div class="sub-anim-out" style="text-align:center">
+        <div style="width:72px;height:72px;border-radius:50%;background:${outColor};border:3px solid rgba(255,255,255,0.3);position:relative;overflow:hidden;opacity:0.5;margin:0 auto">
+          ${outPortrait?`<img src="${outPortrait}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">`:''}
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:6px">${outPlayer.firstname} ${outPlayer.name}</div>
+        <div style="font-size:20px;margin-top:2px">❌</div>
+      </div>
+
+      <div style="font-size:36px">🔄</div>
+
+      <!-- Entrant -->
+      <div class="sub-anim-in" style="text-align:center">
+        <div style="width:72px;height:72px;border-radius:50%;background:${inColor};border:3px solid #00ff88;position:relative;overflow:hidden;margin:0 auto">
+          ${inPortrait?`<img src="${inPortrait}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">`:''}
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,0.8);margin-top:6px;font-weight:700">${inPlayer.firstname} ${inPlayer.name}</div>
+        <div style="font-size:20px;margin-top:2px">✅</div>
+      </div>
+    </div>
+  `
+  document.body.appendChild(overlay)
+  setTimeout(() => {
+    overlay.remove()
+    callback()
+  }, 2000)
+}
+
+// ── REMPLACEMENT ──────────────────────────────────────────
+function openSubstitution(container, game, ctx, preferredSubId = null) {
+  if (!game.usedSubIds) game.usedSubIds = []
+  const grayedPlayers = Object.values(game.homeTeam).flat().filter(p => p.used)
+  const availSubs     = game.homeSubs.filter(s => !game.usedSubIds.includes(s.cardId))
+
+  if (!grayedPlayers.length) { ctx.toast('Aucun joueur grisé', 'info'); return }
+  if (!availSubs.length)      { ctx.toast('Aucun remplaçant disponible', 'info'); return }
+  if (game.subsUsed >= game.maxSubs) { ctx.toast(`Maximum ${game.maxSubs} remplacements`, 'error'); return }
+
+  ctx.openModal('🔄 Remplacement',
+    `<div style="margin-bottom:12px">
+      <div style="font-size:12px;color:var(--gray-600);margin-bottom:6px">JOUEUR À REMPLACER (grisé)</div>
+      ${grayedPlayers.map(p => `
+        <div class="grayed-opt" data-card-id="${p.cardId}" data-role="${p._line}"
+          style="display:flex;align-items:center;gap:8px;padding:8px;border:1.5px solid #eee;border-radius:8px;cursor:pointer;margin-bottom:4px;opacity:0.7">
+          <div style="width:28px;height:28px;background:${JOB_COLORS[p.job]||'#888'};border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900">${p._line}</div>
+          <div><b>${p.firstname} ${p.name}</b></div>
+        </div>`).join('')}
+    </div>
+    <div>
+      <div style="font-size:12px;color:var(--gray-600);margin-bottom:6px">REMPLAÇANTS DISPONIBLES</div>
+      ${availSubs.map(s => `
+        <div class="sub-opt" data-card-id="${s.cardId}"
+          style="display:flex;align-items:center;gap:8px;padding:8px;border:1.5px solid ${s.cardId===preferredSubId?'#D4A017':'var(--green)'};border-radius:8px;cursor:pointer;margin-bottom:4px">
+          <div style="width:28px;height:28px;background:${JOB_COLORS[s.job]||'#888'};border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900">${s.job}</div>
+          <div><b>${s.firstname} ${s.name}</b></div>
+        </div>`).join('')}
+    </div>`,
+    `<button class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.add('hidden')">Annuler</button>`
+  )
+
+  let selectedGrayed = null
+  let selectedSub    = preferredSubId
+
+  document.querySelectorAll('.grayed-opt').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.grayed-opt').forEach(e => e.style.borderColor='#eee')
+      el.style.borderColor = '#c0392b'
+      selectedGrayed = { cardId: el.dataset.cardId, role: el.dataset.role }
+      tryConfirmSub()
+    })
+  })
+
+  document.querySelectorAll('.sub-opt').forEach(el => {
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.sub-opt').forEach(e => e.style.borderColor='var(--green)')
+      el.style.borderColor = '#D4A017'
+      selectedSub = el.dataset.cardId
+      tryConfirmSub()
+    })
+  })
+
+  function tryConfirmSub() {
+    if (!selectedGrayed || !selectedSub) return
+    const role = selectedGrayed.role
+    const team = game.homeTeam[role] || []
+    const idx  = team.findIndex(p => p.cardId === selectedGrayed.cardId)
+    const subPlayer = game.homeSubs.find(s => s.cardId === selectedSub)
+    const outPlayer = team[idx]
+    if (idx !== -1 && subPlayer) {
+      subPlayer._line = role
+      subPlayer._col  = team[idx]._col
+      subPlayer.used  = false
+      team.splice(idx, 1, subPlayer)
+      game.usedSubIds = [...(game.usedSubIds||[]), selectedSub]
+      game.subsUsed++
+      game.log.push({ text:`🔄 ${subPlayer.firstname} ${subPlayer.name} remplace ${outPlayer?.firstname} ${outPlayer?.name}`, type:'info' })
+    }
+    ctx.closeModal()
+    // Animation remplacement
+    if (outPlayer && subPlayer) {
+      showSubAnimation(outPlayer, subPlayer, () => renderGame(container, game, ctx))
+    } else {
+      renderGame(container, game, ctx)
+    }
+  }
+}
+
+// ── GAME CHANGER ──────────────────────────────────────────
+function useGameChanger(gcId, gcType, container, game, ctx) {
+  if (game.usedGc.includes(gcId)) return
+  game.usedGc.push(gcId)
+  switch (gcType) {
+    case 'Double attaque': game.modifiers.home.doubleAttack=true; game.log.push({text:'⚡ Double attaque activée !',type:'info'}); break
+    case 'Bouclier': game.modifiers.home.shield=true; game.log.push({text:'🛡️ Bouclier activé !',type:'info'}); break
+    case 'Ressusciter': {
+      let revived=false
+      for (const r of ['ATT','MIL','DEF','GK']) {
+        const p=(game.homeTeam[r]||[]).find(pp=>pp.used)
+        if(p){p.used=false;revived=true;break}
+      }
+      game.log.push({text:revived?'💫 Joueur ressuscité !':'💫 Aucun joueur à ressusciter',type:'info'})
+      break
+    }
+    case 'Vol de note': game.modifiers.ai.stolenNote=(game.modifiers.ai.stolenNote||0)+1; game.log.push({text:'🎯 -1 à la prochaine attaque IA',type:'info'}); break
+    case 'Gel': {
+      const ai=[...(game.aiTeam.ATT||[]),...(game.aiTeam.MIL||[])].filter(p=>!p.used)
+      if(ai.length){const b=ai.sort((a,b2)=>getNoteForRole(b2,'ATT')-getNoteForRole(a,'ATT'))[0];b.used=true;game.log.push({text:`❄️ ${b.name} (IA) gelé !`,type:'info'})}
+      break
+    }
+    case 'Remplacement+': game.maxSubs++; game.log.push({text:'🔄 +1 remplacement débloqué',type:'info'}); break
+  }
+  supabase.from('cards').delete().eq('id',gcId).then(()=>{})
+  renderGame(container, game, ctx)
+}
+
 // ── BOOST ─────────────────────────────────────────────────
 function useBoost(container, game, ctx) {
   const allPlayers = Object.values(game.homeTeam).flat().filter(p => !p.used)
@@ -813,107 +1059,6 @@ function useBoost(container, game, ctx) {
   })
 }
 
-// ── REMPLACEMENT ──────────────────────────────────────────
-function openSubstitution(container, game, ctx) {
-  if (!game.usedSubIds) game.usedSubIds = []
-  const grayedPlayers = Object.values(game.homeTeam).flat().filter(p => p.used)
-  const availSubs     = game.homeSubs.filter(s => !game.usedSubIds.includes(s.cardId))
-
-  if (!grayedPlayers.length) { ctx.toast('Aucun joueur grisé', 'info'); return }
-  if (!availSubs.length)      { ctx.toast('Aucun remplaçant disponible', 'info'); return }
-  if (game.subsUsed >= game.maxSubs) { ctx.toast(`Maximum ${game.maxSubs} remplacements`, 'error'); return }
-
-  ctx.openModal('🔄 Remplacement',
-    `<div style="margin-bottom:12px">
-      <div style="font-size:12px;color:var(--gray-600);margin-bottom:6px">JOUEUR À REMPLACER (grisé)</div>
-      ${grayedPlayers.map(p => `
-        <div class="grayed-opt" data-card-id="${p.cardId}" data-role="${p._line}"
-          style="display:flex;align-items:center;gap:8px;padding:8px;border:1.5px solid #eee;border-radius:8px;cursor:pointer;margin-bottom:4px;opacity:0.7">
-          <div style="width:28px;height:28px;background:${JOB_COLORS[p.job]||'#888'};border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900">${p._line}</div>
-          <div><b>${p.firstname} ${p.name}</b></div>
-        </div>`).join('')}
-    </div>
-    <div>
-      <div style="font-size:12px;color:var(--gray-600);margin-bottom:6px">REMPLAÇANTS DISPONIBLES</div>
-      ${availSubs.map(s => `
-        <div class="sub-opt" data-card-id="${s.cardId}"
-          style="display:flex;align-items:center;gap:8px;padding:8px;border:1.5px solid var(--green);border-radius:8px;cursor:pointer;margin-bottom:4px">
-          <div style="width:28px;height:28px;background:${JOB_COLORS[s.job]||'#888'};border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:900">${s.job}</div>
-          <div><b>${s.firstname} ${s.name}</b></div>
-        </div>`).join('')}
-    </div>`,
-    `<button class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.add('hidden')">Annuler</button>`
-  )
-
-  let selectedGrayed = null
-  let selectedSub    = null
-
-  document.querySelectorAll('.grayed-opt').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('.grayed-opt').forEach(e => e.style.borderColor='#eee')
-      el.style.borderColor = '#c0392b'
-      selectedGrayed = { cardId: el.dataset.cardId, role: el.dataset.role }
-      tryConfirmSub()
-    })
-  })
-
-  document.querySelectorAll('.sub-opt').forEach(el => {
-    el.addEventListener('click', () => {
-      document.querySelectorAll('.sub-opt').forEach(e => e.style.borderColor='var(--green)')
-      el.style.borderColor = '#D4A017'
-      selectedSub = el.dataset.cardId
-      tryConfirmSub()
-    })
-  })
-
-  function tryConfirmSub() {
-    if (!selectedGrayed || !selectedSub) return
-    const role = selectedGrayed.role
-    const team = game.homeTeam[role] || []
-    const idx  = team.findIndex(p => p.cardId === selectedGrayed.cardId)
-    const subPlayer = game.homeSubs.find(s => s.cardId === selectedSub)
-    if (idx !== -1 && subPlayer) {
-      subPlayer._line = role
-      subPlayer._col  = team[idx]._col
-      subPlayer.used  = false
-      team.splice(idx, 1, subPlayer)
-      game.usedSubIds = [...(game.usedSubIds||[]), selectedSub]
-      game.subsUsed++
-      game.log.push({ text:`🔄 Remplacement : ${subPlayer.firstname} ${subPlayer.name} entre`, type:'info' })
-    }
-    ctx.closeModal()
-    renderGame(container, game, ctx)
-  }
-}
-
-// ── GAME CHANGER ──────────────────────────────────────────
-function useGameChanger(gcId, gcType, container, game, ctx) {
-  if (game.usedGc.includes(gcId)) return
-  game.usedGc.push(gcId)
-  switch (gcType) {
-    case 'Double attaque': game.modifiers.home.doubleAttack=true; game.log.push({text:'⚡ Double attaque !',type:'info'}); break
-    case 'Bouclier': game.modifiers.home.shield=true; game.log.push({text:'🛡️ Bouclier !',type:'info'}); break
-    case 'Ressusciter': {
-      let revived=false
-      for (const r of ['ATT','MIL','DEF','GK']) {
-        const p=(game.homeTeam[r]||[]).find(pp=>pp.used)
-        if(p){p.used=false;revived=true;break}
-      }
-      game.log.push({text:revived?'💫 Joueur ressuscité !':'💫 Aucun joueur à ressusciter',type:'info'})
-      break
-    }
-    case 'Vol de note': game.modifiers.ai.stolenNote=(game.modifiers.ai.stolenNote||0)+1; game.log.push({text:'🎯 -1 à la prochaine IA',type:'info'}); break
-    case 'Gel': {
-      const ai=[...(game.aiTeam.ATT||[]),...(game.aiTeam.MIL||[])].filter(p=>!p.used)
-      if(ai.length){const b=ai.sort((a,b2)=>getNoteForRole(b2,'ATT')-getNoteForRole(a,'ATT'))[0];b.used=true;game.log.push({text:`❄️ ${b.name} (IA) gelé !`,type:'info'})}
-      break
-    }
-    case 'Remplacement+': game.maxSubs++; game.log.push({text:'🔄 +1 remplacement',type:'info'}); break
-  }
-  supabase.from('cards').delete().eq('id',gcId).then(()=>{})
-  renderGame(container, game, ctx)
-}
-
 // ── FIN DE MATCH ──────────────────────────────────────────
 async function finishMatch(container, game, ctx) {
   game.phase = 'finished'
@@ -940,7 +1085,7 @@ async function finishMatch(container, game, ctx) {
   await ctx.refreshProfile()
 
   const overlay = document.createElement('div')
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:2000'
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:2000'
   overlay.innerHTML=`
     <div style="text-align:center;padding:40px;color:#fff;max-width:360px">
       <div style="font-size:72px;margin-bottom:12px">${isWin?'🏆':isDraw?'🤝':'😔'}</div>
