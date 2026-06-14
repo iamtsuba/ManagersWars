@@ -1051,7 +1051,7 @@ import{s as k,F as W,b as me,c as pe,l as X,d as Qe}from"./formation-links-BD9zi
     #match-history-panel.open { transform:translateY(0); }
   </style>
 
-  <div class="match-screen" style="display:flex;flex-direction:column;height:calc(100vh - 130px);overflow:hidden;background:#0a3d1e;position:relative">
+  <div class="match-screen" style="display:flex;flex-direction:column;height:100%;overflow:hidden;background:#0a3d1e;position:relative">
 
     <!-- SCORE BAR -->
     <div style="display:flex;align-items:center;padding:8px 10px;background:rgba(0,0,0,0.5);gap:6px;flex-shrink:0">
@@ -1091,8 +1091,8 @@ import{s as k,F as W,b as me,c as pe,l as X,d as Qe}from"./formation-links-BD9zi
       </div>
 
       <!-- Terrain -->
-      <div style="flex:1;overflow:hidden;min-width:0;display:flex;align-items:flex-start;justify-content:center" id="match-field">
-        <div style="width:min(calc(100vw - 50px), calc(100vh - 350px));overflow:hidden;flex-shrink:0">
+      <div style="flex:1;overflow:hidden;min-width:0;display:flex;align-items:center;justify-content:center" id="match-field">
+        <div style="width:min(calc(100vw - 50px), calc(100vh - 290px));overflow:hidden;flex-shrink:0">
           ${Ve(e.homeTeam,e.formation,e.phase,o,280,280)}
         </div>
       </div>
