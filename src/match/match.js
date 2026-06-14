@@ -304,10 +304,10 @@ async function renderDeckSelect(container, ctx, matchMode) {
         <button id="next-deck" style="width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,${currentIdx===decks.length-1?'0.05':'0.15'});border:2px solid rgba(255,255,255,${currentIdx===decks.length-1?'0.1':'0.3'});color:${currentIdx===decks.length-1?'rgba(255,255,255,0.2)':'#fff'};font-size:20px;cursor:${currentIdx===decks.length-1?'default':'pointer'};flex-shrink:0">▶</button>
       </div>
 
-      <!-- Terrain preview : hauteur plafonnée pour que les boutons restent visibles -->
-      <div id="deck-swipe-zone" style="flex:1;min-height:0;max-height:min(calc(100vh - 360px), 52vw);overflow:hidden;position:relative;touch-action:pan-y">
+      <!-- Terrain preview : contraindre la largeur du SVG pour contrôler hauteur+largeur -->
+      <div id="deck-swipe-zone" style="flex:1;min-height:0;overflow:hidden;position:relative;touch-action:pan-y;display:flex;align-items:center;justify-content:center">
         ${team
-          ? renderTeam(team, formation, null, [], 240, 240)
+          ? `<div style="width:min(88vw, calc(100vh - 430px));overflow:hidden;flex-shrink:0">${renderTeam(team, formation, null, [], 240, 240)}</div>`
           : `<div style="display:flex;align-items:center;justify-content:center;height:100%;opacity:.4;flex-direction:column;gap:8px">
               <div style="font-size:32px">⚠️</div>
               <div>Deck incomplet (${starters.length}/11)</div>
