@@ -207,6 +207,7 @@ function renderBuilder(container, builder, ctx) {
     </div>
   </div>`
 
+  console.log('[renderBuilder] slots:', JSON.stringify(builder.slots), 'formation:', builder.formation)
   renderDeckField(container, builder, positions, ctx)
 
   document.getElementById('builder-back').addEventListener('click', () => navigate('decks'))
@@ -244,7 +245,6 @@ function renderDeckField(container, builder, positions, ctx) {
   const formation = builder.formation
   const FPOS      = FORMATION_POSITIONS[formation] || {}
   const FLINKS    = getActiveLinks ? (getActiveLinks(formation) || FORMATION_LINKS[formation] || []) : (FORMATION_LINKS[formation] || [])
-  console.log('[FLINKS]', formation, JSON.stringify(FLINKS))
 
   // Build slots map : pos → player
   const slots = {}
