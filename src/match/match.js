@@ -286,7 +286,7 @@ async function renderDeckSelect(container, ctx, matchMode) {
     const complete = starters.length >= 11
 
     container.innerHTML = `
-    <div id="deck-select-screen" style="display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#0a3d1e;color:#fff">
+    <div id="deck-select-screen" style="display:flex;flex-direction:column;height:calc(100vh - 130px);overflow:hidden;background:#0a3d1e;color:#fff">
 
       <!-- Header -->
       <div style="padding:10px 16px;background:rgba(0,0,0,0.4);text-align:center;flex-shrink:0">
@@ -305,9 +305,9 @@ async function renderDeckSelect(container, ctx, matchMode) {
       </div>
 
       <!-- Terrain preview : hauteur plafonnée pour que les boutons restent visibles -->
-      <div id="deck-swipe-zone" style="flex:1;min-height:0;max-height:calc(100vh - 310px);overflow:hidden;position:relative;touch-action:pan-y">
+      <div id="deck-swipe-zone" style="flex:1;min-height:0;max-height:min(calc(100vh - 360px), 52vw);overflow:hidden;position:relative;touch-action:pan-y">
         ${team
-          ? renderTeam(team, formation, null, [])
+          ? renderTeam(team, formation, null, [], 240, 240)
           : `<div style="display:flex;align-items:center;justify-content:center;height:100%;opacity:.4;flex-direction:column;gap:8px">
               <div style="font-size:32px">⚠️</div>
               <div>Deck incomplet (${starters.length}/11)</div>
@@ -564,14 +564,15 @@ function buildTeamSVG(team, formation, phase, selectedIds, W=310, H=310) {
     }
   }
 
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:380px;margin:0 auto">
+  const PAD = R + 4
+  return `<svg viewBox="${-PAD} ${-PAD} ${W+PAD*2} ${H+PAD*2}" width="100%" style="display:block;width:100%;max-width:380px;margin:0 auto">
     ${svg}
   </svg>`
 }
 
-function renderTeam(team, formation, phase, selectedIds) {
+function renderTeam(team, formation, phase, selectedIds, W=300, H=300) {
   return `<div id="match-terrain-wrap" style="position:relative;padding:0 4px">
-    ${buildTeamSVG(team, formation, phase, selectedIds)}
+    ${buildTeamSVG(team, formation, phase, selectedIds, W, H)}
   </div>`
 }
 
@@ -609,7 +610,7 @@ function renderGame(container, game, ctx) {
     #match-history-panel.open { transform:translateY(0); }
   </style>
 
-  <div class="match-screen" style="display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#0a3d1e;position:relative">
+  <div class="match-screen" style="display:flex;flex-direction:column;height:calc(100vh - 130px);overflow:hidden;background:#0a3d1e;position:relative">
 
     <!-- SCORE BAR -->
     <div style="display:flex;align-items:center;padding:8px 10px;background:rgba(0,0,0,0.5);gap:6px;flex-shrink:0">
@@ -662,8 +663,8 @@ function renderGame(container, game, ctx) {
       </div>
 
       <!-- Terrain -->
-      <div style="flex:1;overflow:hidden;min-width:0" id="match-field">
-        ${renderTeam(game.homeTeam, game.formation, game.phase, selectedIds)}
+      <div style="flex:1;overflow:hidden;min-width:0;align-self:flex-start;max-height:min(calc(100vh - 340px), calc(100vw - 50px))" id="match-field">
+        ${renderTeam(game.homeTeam, game.formation, game.phase, selectedIds, 280, 280)}
       </div>
     </div>
 
