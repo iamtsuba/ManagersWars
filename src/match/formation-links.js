@@ -398,7 +398,6 @@ export function getCandidateLinks(formation, maxDist = 0.4) {
  */
 export function linkColor(pA, pB) {
   if (!pA || !pB) return '#cc2222'          // rouge : case vide ou aucun lien
-  console.log('[linkColor]', pA?.surname_encoded, pB?.surname_encoded, '| club_id:', pA?.club_id, typeof pA?.club_id, '===', pB?.club_id, typeof pB?.club_id, '| country:', pA?.country_code, '===', pB?.country_code)
   const sc = pA.country_code && pB.country_code && pA.country_code === pB.country_code
   const sk = pA.club_id && pB.club_id && pA.club_id === pB.club_id
   if (sc && sk) return '#00ff88'            // vert flashy : pays + club
