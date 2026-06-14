@@ -286,12 +286,18 @@ function renderDeckField(container, builder, positions, ctx) {
     if (!a || !b) continue
     const pA = slots[posA], pB = slots[posB]
     const lc = linkColor(pA, pB)
-    const opacity = (lc === '#ff3333' || lc === '#cc2222') ? 0.75 : 0.9
     const hasGlow = lc === '#00ff88' || lc === '#FFD700'
-    const glow    = hasGlow ? `filter="url(#glow-${lc.replace('#','')})"` : ''
-    svgContent += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
-      stroke="${lc}" stroke-width="${LINK_W}" stroke-linecap="round"
-      opacity="${opacity}" ${glow}/>`
+    if (hasGlow) {
+      // Double ligne : halo large semi-transparent + trait fin par-dessus
+      svgContent += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+        stroke="${lc}" stroke-width="${LINK_W * 3}" stroke-linecap="round" opacity="0.25"/>`
+      svgContent += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+        stroke="${lc}" stroke-width="${LINK_W}" stroke-linecap="round" opacity="0.95"/>`
+    } else {
+      const opacity = (lc === '#ff3333' || lc === '#cc2222') ? 0.75 : 0.9
+      svgContent += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+        stroke="${lc}" stroke-width="${LINK_W}" stroke-linecap="round" opacity="${opacity}"/>`
+    }
   }
 
   // 2. Joueurs
@@ -344,18 +350,7 @@ function renderDeckField(container, builder, positions, ctx) {
     }
   }
 
-  // Filtres glow
-  const glowDefs = `
-    <defs>
-      <filter id="glow-00ff88" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-      <filter id="glow-FFD700" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>`
+  const glowDefs = '' // filtres supprimés (bug url(#id) SPA Chrome)
 
   field.innerHTML = `
     <!-- Badge MIL -->
